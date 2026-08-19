@@ -11,6 +11,10 @@ on:
         description: "Alles doorrekenen maar niets naar Telegram sturen"
         type: boolean
         default: false
+      demo:
+        description: "Testbericht met een verzonnen swell naar Telegram sturen"
+        type: boolean
+        default: false
 
 permissions:
   contents: write           # nodig om state.json terug te committen
@@ -37,7 +41,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python main.py --verbose ${{ inputs.dry_run && '--dry-run' || '' }}
+          python main.py --verbose \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.demo && '--demo' || '' }}
 
       - name: Onthouden wat gemeld is
         if: ${{ !inputs.dry_run }}

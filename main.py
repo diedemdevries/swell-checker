@@ -194,7 +194,9 @@ def main() -> int:
         print("Niets nieuws te melden.")
 
     state.prune(today)
-    if not args.dry_run:
+    # Een demo-run is nep: die mag niet in het geheugen belanden, anders
+    # onderdrukt hij later een echte swell op diezelfde datum.
+    if not args.dry_run and not args.demo:
         state.save()
     return 0
 
