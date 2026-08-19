@@ -44,6 +44,48 @@ def _get(url: str, params: dict, tries: int = 3) -> dict:
     raise ForecastError(f"{url} faalde na {tries} pogingen: {last}")
 
 
+def fetch_many(spots: List[dict], days: int = 7, chunk: int = 20) -> Dict[str, List[dict]]:
+    """Haal alle spots in zo min mogelijk calls op.
+
+    Open-Meteo accepteert meerdere coordinaten per verzoek (komma-gescheiden)
+    en geeft dan een lijst terug in dezelfde volgorde. Dat scheelt 50 losse
+    calls: sneller, en geen timeouts meer doordat we de API bestoken.
+    Valt een groep om, dan proberen we die spots alsnog een voor een.
+    """
+    out: Dict[str, List[dict]] = {}
+    for i in range(0, len(spots), chunk):
+        group = spots[i:i + chunk]
+        common = {
+            "latitude": ",".join(str(s["lat"]) for s in group),
+            "longitude": ",".join(str(s["lon"]) for s in group),
+            "timezone": "auto",
+            "forecast_days": days,
+        }
+        try:
+            marine = _get(MARINE_URL, {**common, "hourly": MARINE_VARS})
+            wind = _get(WEATHER_URL, {**common, "hourly": WIND_VARS,
+                                      "wind_speed_unit": "kn"})
+        except ForecastError as exc:
+            print(f"  groep van {len(group)} mislukt ({exc}) — nu een voor een")
+            for sp in group:
+                try:
+                    out[sp["name"]] = fetch_spot(sp, days=days)
+                except ForecastError as e2:
+                    print(f"  {sp['name']}: {e2}")
+                    out[sp["name"]] = []
+            continue
+
+        m_list = marine if isinstance(marine, list) else [marine]
+        w_list = wind if isinstance(wind, list) else [wind]
+        for j, sp in enumerate(group):
+            try:
+                out[sp["name"]] = merge_hourly(m_list[j], w_list[j])
+            except (IndexError, ForecastError, KeyError, TypeError) as exc:
+                print(f"  {sp['name']}: samenvoegen mislukt ({exc})")
+                out[sp["name"]] = []
+    return out
+
+
 def fetch_spot(spot: dict, days: int = 7) -> List[dict]:
     """Haal de forecast voor een spot op en geef genormaliseerde uurrijen terug.
 

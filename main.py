@@ -46,20 +46,34 @@ def in_season(spot: dict, today: date) -> bool:
 
 def scan(cfg: dict, today: date, verbose: bool = False, fetch=None):
     """Alle spots langs, alle blokken terug die aan de eisen voldoen."""
-    fetch = fetch or forecast.fetch_spot
     criteria = cfg["criteria"]
-    horizon = max(cfg["trip"]["early_warning_days"]) + 1
+    horizon = min(max(cfg["trip"]["early_warning_days"]) + 1, 7)
     all_blocks = []
 
+    active, skipped = [], []
     for spot in cfg["spots"]:
-        if not in_season(spot, today):
+        (active if in_season(spot, today) else skipped).append(spot)
+    if verbose:
+        for spot in skipped:
+            print(f"  {spot['name']:<28} buiten seizoen")
+
+    # Eén gebundelde call voor alles; fetch= is er voor de tests.
+    if fetch is None:
+        bulk = forecast.fetch_many(active, days=horizon)
+    else:
+        bulk = {}
+        for spot in active:
+            try:
+                bulk[spot["name"]] = fetch(spot, days=horizon)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  {spot['name']:<28} forecast mislukt: {exc}")
+                bulk[spot["name"]] = []
+
+    for spot in active:
+        rows = bulk.get(spot["name"]) or []
+        if not rows:
             if verbose:
-                print(f"  {spot['name']:<28} buiten seizoen")
-            continue
-        try:
-            rows = fetch(spot, days=min(horizon, 7))
-        except Exception as exc:  # noqa: BLE001
-            print(f"  {spot['name']:<28} forecast mislukt: {exc}")
+                print(f"  {spot['name']:<28} geen data")
             continue
 
         by_day = forecast.group_by_day(rows)
