@@ -186,7 +186,7 @@ if blocks:
                        back_d.isoformat(), 118.0, "Ryanair", "https://x")
     c = booking.car_for("BIQ", "Biarritz", out_d, back_d, CFG["car_eur_day"], CFG["links"]["car"])
     s = booking.stay_for("Biarritz", out_d, back_d, 50, 2, CFG["links"]["stay"])
-    msg = notify.build_message(b, f, c, s, "new", "confirm", 2)
+    msg = notify.build_message(b, f, c, s, "new", "confirm", 2, None, 200)
     check("bericht bevat de spot, de dagen en een totaalbedrag",
           "Hossegor Test" in msg and "Totaal" in msg and "ft" in msg)
     check("bericht is niet absurd lang voor Telegram", len(msg) < 4096, f"{len(msg)} tekens")
@@ -194,6 +194,46 @@ if blocks:
     DEMO_MSG = msg
 else:
     DEMO_MSG = ""
+
+# ---------------------------------------------------------------
+# 13. Vluchtvenster: goedkoopste fare eruit pikken, datums overnemen.
+# ---------------------------------------------------------------
+FARES = [
+    {"summary": {"price": {"value": 214.0}},
+     "outbound": {"departureDate": "2026-09-17T06:00:00"},
+     "inbound": {"departureDate": "2026-09-22T20:00:00"}},
+    {"summary": {"price": {"value": 96.5}},
+     "outbound": {"departureDate": "2026-09-18T07:15:00"},
+     "inbound": {"departureDate": "2026-09-21T18:00:00"}},
+    {"summary": {"price": {}}},
+]
+_best = flights.pick_best_fare(FARES)
+check("goedkoopste fare uit het venster wordt gekozen",
+      _best and abs(_best["price"] - 96.5) < 0.01, f"{_best}")
+check("datums komen uit de fare, niet uit onze aanname",
+      _best["out"] == "2026-09-18" and _best["back"] == "2026-09-21", f"{_best}")
+check("lege fare-lijst geeft niets terug", flights.pick_best_fare([]) is None)
+check("kapotte fares laten het niet klappen",
+      flights.pick_best_fare([{"summary": {}}]) is None)
+
+if blocks:
+    _b = blocks[0]
+    _late, _early = _b.start + timedelta(days=1), _b.end - timedelta(days=1)
+    _f = flights.Flight("EIN", "Eindhoven", "BIQ", _late.isoformat(),
+                        _early.isoformat(), 89.0, "Ryanair", "https://x")
+    _c = booking.car_for("BIQ", "Biarritz", _late, _early, CFG["car_eur_day"],
+                         CFG["links"]["car"])
+    _s = booking.stay_for("Biarritz", _late, _early, 50, 2, CFG["links"]["stay"])
+    check("bericht waarschuwt als de goedkope vlucht surfdagen kost",
+          "mis je" in notify.build_message(_b, _f, _c, _s, "new", "confirm",
+                                           2, None, 200))
+    _dur = flights.Flight("EIN", "Eindhoven", "BIQ",
+                          (_b.start - timedelta(days=1)).isoformat(),
+                          (_b.end + timedelta(days=1)).isoformat(),
+                          450.0, "Ryanair", "https://x")
+    _m = notify.build_message(_b, _dur, _c, _s, "new", "confirm", 2, None, 200)
+    check("dure vlucht wordt gemarkeerd maar niet geblokkeerd",
+          "prijzig" in _m and "450" in _m)
 
 # ---------------------------------------------------------------
 print()

@@ -34,7 +34,7 @@ def period_verdict(p: float) -> str:
 
 
 def build_message(block, flight, car, stay, reason: str, tier: str,
-                  people: int, runner_up=None) -> str:
+                  people: int, runner_up=None, reference_eur: float = None) -> str:
     spot = block.spot
     head = {
         "new": "SWELL IN BEELD",
@@ -76,9 +76,10 @@ def build_message(block, flight, car, stay, reason: str, tier: str,
     if flight_pp is None:
         lines.append(f"✈️ Vlucht — <a href=\"{_e(flight.link)}\">prijs zelf checken</a>")
     else:
+        duur = "" if reference_eur is None or flight_pp <= reference_eur else "  ⚠️ prijzig"
         lines.append(
             f"✈️ Vlucht  EUR {flight_pp:.0f}  ({_e(flight.origin)}→{_e(flight.dest)},"
-            f" {_e(flight.carrier)})  <a href=\"{_e(flight.link)}\">check</a>"
+            f" {_e(flight.carrier)}){_e(duur)}  <a href=\"{_e(flight.link)}\">check</a>"
         )
     lines.append(
         f"🚗 Auto  ~EUR {car_pp:.0f}  ({car.days}d à EUR {car.eur_day:.0f}, gedeeld)"
@@ -104,6 +105,16 @@ def build_message(block, flight, car, stay, reason: str, tier: str,
         f"🛫 Heen {_e(nl_date(out_d))} · terug {_e(nl_date(back_d))}",
         f"📍 {_e(car.airport)} → {_e(spot['name'])}, {spot['drive_min']} min rijden",
     ]
+
+    # De goedkoopste vlucht valt niet altijd precies om het blok heen.
+    gemist = []
+    if out_d > block.start:
+        gemist.append(f"de eerste {(out_d - block.start).days} dag(en)")
+    if back_d < block.end:
+        gemist.append(f"de laatste {(block.end - back_d).days} dag(en)")
+    if gemist:
+        lines.append(f"<i>Let op: met deze vlucht mis je {_e(' en '.join(gemist))} "
+                     f"van de swell — dit was wel de goedkoopste.</i>")
 
     if runner_up is not None:
         lines += ["", f"<i>Ook in beeld: {_e(runner_up.spot['name'])}"

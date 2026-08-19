@@ -34,7 +34,14 @@ criteria:
   min_day_score: 55       # een dag onder deze score telt niet mee als 'goede dag'
 
 trip:
-  max_flight_eur: 200         # retour per persoon
+  # Geen harde bovengrens meer: elk voorstel komt binnen, met de prijs erbij.
+  # Ligt hij hierboven, dan zet het bericht er alleen een opmerking bij.
+  flight_reference_eur: 200   # retour per persoon
+  # Hoeveel dagen speling rond het swell-blok mag Ryanair meenemen bij het
+  # zoeken naar de goedkoopste combinatie. Groter = vaker een koopje, maar
+  # je mist dan mogelijk de eerste of laatste surfdag.
+  flex_days_before: 2
+  flex_days_after: 2
   max_hostel_eur_night: 50    # per persoon
   people: 2
   early_warning_days: [6, 9]  # niveau 1: swell zit nog zo ver weg

@@ -95,24 +95,39 @@ def scan(cfg: dict, today: date, verbose: bool = False, fetch=None):
     return all_blocks
 
 
-def build_trip(block, cfg: dict):
-    """Vertaal een swell-blok naar vlucht, auto en bed."""
-    out_d = block.start - timedelta(days=1)     # dag ervoor aankomen
-    back_d = min(block.end + timedelta(days=1),
-                 out_d + timedelta(days=cfg["trip"]["max_trip_nights"]))
-    if back_d <= out_d:
-        back_d = out_d + timedelta(days=1)
+def build_trip(block, cfg: dict, today: date):
+    """Vertaal een swell-blok naar vlucht, auto en bed.
+
+    De vlucht wordt niet op vaste datums gezocht maar over een venster
+    rond het blok -- Ryanair zoekt daarbinnen zelf de goedkoopste
+    combinatie, en dat scheelt vaak flink.
+    """
+    t = cfg["trip"]
+    out_from = max(block.start - timedelta(days=t["flex_days_before"]), today)
+    out_to = block.start                          # uiterlijk op dag 1 aankomen
+    if out_to < out_from:
+        out_to = out_from
+    back_from = block.end                         # niet eerder dan de laatste dag
+    back_to = block.end + timedelta(days=t["flex_days_after"])
+    if back_to > out_from + timedelta(days=t["max_trip_nights"]):
+        back_to = out_from + timedelta(days=t["max_trip_nights"])
+    if back_to < back_from:
+        back_to = back_from
 
     airport = block.spot["airport"]
     city = cfg["airport_city"].get(airport, airport)
-    people = cfg["trip"]["people"]
+    people = t["people"]
 
-    f = flights.cheapest(cfg["origins"], airport, out_d, back_d,
-                         cfg["links"]["flight"], people)
+    f = flights.cheapest(cfg["origins"], airport, out_from, out_to,
+                         back_from, back_to, cfg["links"]["flight"], people)
+
+    # Auto en bed volgen de datums die de vlucht daadwerkelijk opleverde.
+    out_d = date.fromisoformat(f.out_date)
+    back_d = date.fromisoformat(f.back_date)
     c = booking.car_for(airport, city, out_d, back_d,
                         cfg["car_eur_day"], cfg["links"]["car"])
     s = booking.stay_for(city, out_d, back_d,
-                         cfg["trip"]["max_hostel_eur_night"], people,
+                         t["max_hostel_eur_night"], people,
                          cfg["links"]["stay"])
     return f, c, s
 
@@ -167,22 +182,17 @@ def main() -> int:
             continue
 
         try:
-            f, c, s = build_trip(block, cfg)
+            f, c, s = build_trip(block, cfg, today)
         except Exception as exc:  # noqa: BLE001
             print(f"  {block.spot['name']} — trip bouwen mislukt: {exc}")
             traceback.print_exc()
             continue
 
-        # Prijsplafond: alleen als we een echte prijs hebben.
-        if f.price_eur is not None and f.price_eur > cfg["trip"]["max_flight_eur"]:
-            print(f"  {block.spot['name']} — vlucht EUR {f.price_eur:.0f} boven plafond")
-            state.record(block.key(), tier, block.score)
-            continue
-
         runner = next((b for b, _ in candidates
                        if b.spot["name"] != block.spot["name"]), None)
         msg = notify.build_message(block, f, c, s, reason, tier,
-                                   cfg["trip"]["people"], runner)
+                                   cfg["trip"]["people"], runner,
+                                   cfg["trip"]["flight_reference_eur"])
         if tg.send(msg):
             tg.poll(f"{block.spot['name']} — {block.n_days} dagen. Gaan we?",
                     ["Ik ben in 🤙", "Kan niet 😔"])
