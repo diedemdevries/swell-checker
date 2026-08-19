@@ -10,14 +10,14 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from surfcheck.forecast import group_by_day                    # noqa: E402
-from surfcheck.scoring import (find_blocks, score_day,          # noqa: E402
+from forecast import group_by_day                    # noqa: E402
+from scoring import (find_blocks, score_day,          # noqa: E402
                                score_hour, surf_height_ft)
-from surfcheck.state import State                               # noqa: E402
-from tests.fixtures import make_rows, spot                      # noqa: E402
+from state import State                               # noqa: E402
+from fixtures import make_rows, spot                      # noqa: E402
 
 CFG = yaml.safe_load(open(ROOT / "config.yaml"))
 C = CFG["criteria"]
@@ -165,7 +165,7 @@ check("1.2m @ 9s op een strand = te klein voor deze trip", beach < 5, f"{beach:.
 # 12. Einde-tot-eind: scan met verzonnen data levert een bericht op.
 # ---------------------------------------------------------------
 from main import scan  # noqa: E402
-from surfcheck import booking, flights, notify  # noqa: E402
+import booking, flights, notify  # noqa: E402
 
 fake_cfg = dict(CFG)
 fake_cfg["spots"] = [spot(name="Hossegor Test", airport="BIQ", tier="near")]

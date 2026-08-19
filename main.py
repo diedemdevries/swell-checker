@@ -15,9 +15,9 @@ from pathlib import Path
 
 import yaml
 
-from surfcheck import booking, flights, forecast, notify
-from surfcheck.scoring import find_blocks, score_day, score_hour
-from surfcheck.state import State
+import booking, flights, forecast, notify
+from scoring import find_blocks, score_day, score_hour
+from state import State
 
 ROOT = Path(__file__).parent
 
@@ -121,7 +121,7 @@ def main() -> int:
     print(f"Surf check · {datetime.now():%Y-%m-%d %H:%M} · {len(cfg['spots'])} spots")
 
     if args.demo:
-        from tests.fixtures import demo_block
+        from fixtures import demo_block
         blocks = [demo_block(cfg)]
     else:
         blocks = scan(cfg, today, verbose=args.verbose)

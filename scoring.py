@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import List, Optional
 
-from .geo import ang_diff, in_window, is_offshore, window_center, window_span
+from geo import ang_diff, in_window, is_offshore, window_center, window_span
 
 M_TO_FT = 3.28084
 

@@ -46,8 +46,8 @@ def spot(**over):
 def demo_block(cfg):
     """Een fraai blok, puur om het Telegram-bericht te kunnen bekijken."""
     from datetime import date as _date
-    from surfcheck.forecast import group_by_day
-    from surfcheck.scoring import find_blocks, score_day, score_hour
+    from forecast import group_by_day
+    from scoring import find_blocks, score_day, score_hour
 
     s = cfg["spots"][0]
     c = cfg["criteria"]
