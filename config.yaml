@@ -84,7 +84,7 @@ spots:
     airport: AGA
     drive_min: 45
     tier: far
-    season: [10, 11, 12, 1, 2, 3, 4]
+    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
 
   - name: Banana Point
     region: Marokko
@@ -96,7 +96,7 @@ spots:
     airport: AGA
     drive_min: 40
     tier: far
-    season: [10, 11, 12, 1, 2, 3, 4]
+    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
 
   - name: Killer Point
     region: Marokko
@@ -108,7 +108,7 @@ spots:
     airport: AGA
     drive_min: 50
     tier: far
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Imsouane Bay
     region: Marokko
@@ -120,7 +120,7 @@ spots:
     airport: AGA
     drive_min: 95
     tier: far
-    season: [10, 11, 12, 1, 2, 3, 4]
+    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
 
   # ---------- PORTUGAL ----------
   - name: Supertubos (Peniche)
@@ -133,7 +133,7 @@ spots:
     airport: LIS
     drive_min: 75
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Baleal
     region: Portugal
@@ -145,7 +145,7 @@ spots:
     airport: LIS
     drive_min: 80
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Ribeira d'Ilhas (Ericeira)
     region: Portugal
@@ -157,7 +157,7 @@ spots:
     airport: LIS
     drive_min: 50
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Coxos (Ericeira)
     region: Portugal
@@ -169,7 +169,7 @@ spots:
     airport: LIS
     drive_min: 50
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Carcavelos
     region: Portugal
@@ -181,7 +181,7 @@ spots:
     airport: LIS
     drive_min: 25
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Arrifana (Algarve)
     region: Portugal
@@ -193,7 +193,7 @@ spots:
     airport: FAO
     drive_min: 75
     tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Beliche (Sagres)
     region: Portugal
@@ -205,7 +205,7 @@ spots:
     airport: FAO
     drive_min: 90
     tier: far
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   # ---------- SPANJE ----------
   - name: Mundaka
@@ -218,7 +218,7 @@ spots:
     airport: BIO
     drive_min: 40
     tier: near
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Zarautz
     region: Spanje
@@ -230,7 +230,7 @@ spots:
     airport: BIO
     drive_min: 40
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Somo (Cantabria)
     region: Spanje
@@ -242,7 +242,7 @@ spots:
     airport: SDR
     drive_min: 20
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Rodiles (Asturias)
     region: Spanje
@@ -254,7 +254,7 @@ spots:
     airport: OVD
     drive_min: 40
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   # ---------- ZUID-FRANKRIJK ----------
   - name: La Graviere (Hossegor)
@@ -267,7 +267,7 @@ spots:
     airport: BIQ
     drive_min: 40
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Les Bourdaines (Seignosse)
     region: Frankrijk
@@ -279,7 +279,7 @@ spots:
     airport: BIQ
     drive_min: 45
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: La Piste (Capbreton)
     region: Frankrijk
@@ -291,7 +291,7 @@ spots:
     airport: BIQ
     drive_min: 30
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   - name: Lacanau
     region: Frankrijk
@@ -303,7 +303,7 @@ spots:
     airport: BOD
     drive_min: 60
     tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
   # ---------- ENGELAND (strengere lat: slechte bereikbaarheid) ----------
   - name: Fistral (Newquay)
@@ -316,7 +316,7 @@ spots:
     airport: NQY
     drive_min: 15
     tier: far
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Porthleven
     region: Engeland
@@ -328,7 +328,7 @@ spots:
     airport: NQY
     drive_min: 60
     tier: far
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Croyde
     region: Engeland
@@ -340,7 +340,7 @@ spots:
     airport: BRS
     drive_min: 120
     tier: far
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   # ---------- IERLAND ----------
   - name: Lahinch
@@ -353,7 +353,7 @@ spots:
     airport: SNN
     drive_min: 45
     tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
+    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
 
   - name: Bundoran (The Peak)
     region: Ierland
@@ -365,7 +365,7 @@ spots:
     airport: NOC
     drive_min: 90
     tier: far
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Easkey Right
     region: Ierland
@@ -377,7 +377,7 @@ spots:
     airport: NOC
     drive_min: 60
     tier: far
-    season: [10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
   - name: Strandhill
     region: Ierland
@@ -389,7 +389,7 @@ spots:
     airport: NOC
     drive_min: 45
     tier: far
-    season: [9, 10, 11, 12, 1, 2, 3]
+    season: [9, 10, 11, 12, 1, 2, 3, 4]
 
 # ============================================================
 #  HUURAUTO — schatting per bestemming, euro per dag, kleinste klasse.
