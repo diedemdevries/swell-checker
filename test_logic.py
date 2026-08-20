@@ -319,6 +319,47 @@ fl_stops = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
 check("met overstap toegestaan komt de tussenstop er wel door", len(fl_stops) == 2)
 
 # ---------------------------------------------------------------
+# 16b. Het echte Google Flights-formaat uitpakken.
+# ---------------------------------------------------------------
+GF = [{
+  "search_parameters": {"departure_id": "EIN,AMS", "arrival_id": "AGA,RAK"},
+  "best_flights": [
+    {"price": 274, "flights": [
+        {"departure_airport": {"id": "AMS", "time": "2026-08-21 14:20"},
+         "arrival_airport": {"id": "AGA", "time": "2026-08-21 17:20"},
+         "airline": "Transavia"}]},
+    {"price": 180, "flights": [
+        {"departure_airport": {"id": "EIN", "time": "2026-08-21 09:00"},
+         "arrival_airport": {"id": "FEZ", "time": "2026-08-21 11:15"},
+         "airline": "Ryanair"},
+        {"departure_airport": {"id": "FEZ", "time": "2026-08-21 21:05"},
+         "arrival_airport": {"id": "AGA", "time": "2026-08-21 22:25"},
+         "airline": "Ryanair"}]},
+  ],
+  "other_flights": [
+    {"price": 330, "flights": [
+        {"departure_airport": {"id": "AMS", "time": "2026-08-21 07:10"},
+         "arrival_airport": {"id": "AGA", "time": "2026-08-21 10:15"},
+         "airline": "KLM"}]},
+  ],
+}]
+gf_rows = flights._rows(GF)
+check("beste en overige vluchten worden allebei gepakt", len(gf_rows) == 3, f"{len(gf_rows)}")
+gf = flights.to_flights(gf_rows, {"AGA": "Agadir"}, {"AGA": 45},
+                        date(2026, 8, 21), date(2026, 8, 26),
+                        [date(2026, 8, 23), date(2026, 8, 24)],
+                        "https://x/{origin}/{dest}", 2, True)
+check("tussenlanding via Fez valt af bij direct-only", len(gf) == 2, f"{[f.carrier for f in gf]}")
+check("vertrekvliegveld komt uit het eerste deeltraject",
+      sorted(f.origin for f in gf) == ["AMS", "AMS"], f"{[f.origin for f in gf]}")
+check("aankomsttijd komt uit het laatste deeltraject",
+      any(f.out_arrive and "17:20" in f.out_arrive for f in gf))
+check("zonder terugvlucht rekent hij met een avondvertrek",
+      all(f.back_depart and f.back_depart.startswith("2026-08-26") for f in gf))
+check("spatie-tijden worden begrepen",
+      flights.sessions_kept([date(2026, 8, 23)], "2026-08-21 17:20", "2026-08-26 20:00") == 1)
+
+# ---------------------------------------------------------------
 # 17. Bron kapot -> duidelijke fout, geen stille stilte.
 # ---------------------------------------------------------------
 try:
