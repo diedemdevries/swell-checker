@@ -66,13 +66,22 @@ def fetch_many(spots: List[dict], days: int = 7, chunk: int = 20) -> Dict[str, L
             wind = _get(WEATHER_URL, {**common, "hourly": WIND_VARS,
                                       "wind_speed_unit": "kn"})
         except ForecastError as exc:
+            # Een voor een proberen, maar niet blind doorgaan: ligt de API
+            # er helemaal uit, dan is 20x wachten op een timeout zinloos.
             print(f"  groep van {len(group)} mislukt ({exc}) — nu een voor een")
+            misses = 0
             for sp in group:
+                if misses >= 3:
+                    print("  drie keer op rij mis — rest van de groep overgeslagen")
+                    out[sp["name"]] = []
+                    continue
                 try:
-                    out[sp["name"]] = fetch_spot(sp, days=days)
+                    out[sp["name"]] = fetch_spot(sp, days=days, tries=1)
+                    misses = 0
                 except ForecastError as e2:
                     print(f"  {sp['name']}: {e2}")
                     out[sp["name"]] = []
+                    misses += 1
             continue
 
         m_list = marine if isinstance(marine, list) else [marine]
@@ -86,7 +95,7 @@ def fetch_many(spots: List[dict], days: int = 7, chunk: int = 20) -> Dict[str, L
     return out
 
 
-def fetch_spot(spot: dict, days: int = 7) -> List[dict]:
+def fetch_spot(spot: dict, days: int = 7, tries: int = 3) -> List[dict]:
     """Haal de forecast voor een spot op en geef genormaliseerde uurrijen terug.
 
     Elke rij: {time, swell_m, period_s, swell_from, wind_kt, wind_from}
@@ -94,8 +103,9 @@ def fetch_spot(spot: dict, days: int = 7) -> List[dict]:
     common = {"latitude": spot["lat"], "longitude": spot["lon"],
               "timezone": "auto", "forecast_days": days}
 
-    marine = _get(MARINE_URL, {**common, "hourly": MARINE_VARS})
-    wind = _get(WEATHER_URL, {**common, "hourly": WIND_VARS, "wind_speed_unit": "kn"})
+    marine = _get(MARINE_URL, {**common, "hourly": MARINE_VARS}, tries=tries)
+    wind = _get(WEATHER_URL, {**common, "hourly": WIND_VARS,
+                              "wind_speed_unit": "kn"}, tries=tries)
 
     return merge_hourly(marine, wind)
 

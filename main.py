@@ -8,6 +8,7 @@
 """
 
 import argparse
+import os
 import sys
 import traceback
 from datetime import date, datetime, timedelta
@@ -95,41 +96,72 @@ def scan(cfg: dict, today: date, verbose: bool = False, fetch=None):
     return all_blocks
 
 
-def build_trip(block, cfg: dict, today: date):
-    """Vertaal een swell-blok naar vlucht, auto en bed.
+def build_trip(block, cfg: dict, today: date, stays: dict):
+    """Vertaal een swell-blok naar vlucht, auto, materiaal en bed.
 
-    De vlucht wordt niet op vaste datums gezocht maar over een venster
-    rond het blok -- Ryanair zoekt daarbinnen zelf de goedkoopste
-    combinatie, en dat scheelt vaak flink.
+    De vlucht wordt gezocht over de hele vliegveldpool van de regio en over
+    een paar heen/terug-combinaties. Winnaar is niet de goedkoopste, maar
+    de laagste prijs per behouden surfsessie.
     """
+    spot = block.spot
     t = cfg["trip"]
-    out_from = max(block.start - timedelta(days=t["flex_days_before"]), today)
-    out_to = block.start                          # uiterlijk op dag 1 aankomen
-    if out_to < out_from:
-        out_to = out_from
-    back_from = block.end                         # niet eerder dan de laatste dag
-    back_to = block.end + timedelta(days=t["flex_days_after"])
-    if back_to > out_from + timedelta(days=t["max_trip_nights"]):
-        back_to = out_from + timedelta(days=t["max_trip_nights"])
-    if back_to < back_from:
-        back_to = back_from
+    region = cfg["regions"][spot["region"]]
+    airports = {a["code"]: a["name"] for a in region["airports"]}
 
-    airport = block.spot["airport"]
-    city = cfg["airport_city"].get(airport, airport)
-    people = t["people"]
+    # Alleen vliegvelden die bij deze spot horen en binnen de rijtijd vallen.
+    drive = {code: mins for code, mins in (spot.get("drive_min") or {}).items()
+             if code in airports and mins <= t["max_drive_min"]}
+    if not drive:
+        drive = {a["code"]: 0 for a in region["airports"][:1]}
 
-    f = flights.cheapest(cfg["origins"], airport, out_from, out_to,
-                         back_from, back_to, cfg["links"]["flight"], people)
+    days = [d.day for d in block.days]
+    pairs = flights.date_pairs(block.start, block.end, today,
+                               t["flex_days_before"], t["flex_days_after"],
+                               t["max_trip_nights"])
 
-    # Auto en bed volgen de datums die de vlucht daadwerkelijk opleverde.
-    out_d = date.fromisoformat(f.out_date)
-    back_d = date.fromisoformat(f.back_date)
-    c = booking.car_for(airport, city, out_d, back_d,
-                        cfg["car_eur_day"], cfg["links"]["car"])
-    s = booking.stay_for(city, out_d, back_d,
-                         t["max_hostel_eur_night"], people,
-                         cfg["links"]["stay"])
-    return f, c, s
+    token = os.environ.get("APIFY_TOKEN", "")
+    found, err = [], None
+    for out_d, back_d in pairs:
+        try:
+            rows = flights.search(cfg, cfg["origins"], sorted(drive),
+                                  out_d, back_d, t["people"], token)
+        except flights.FlightError as exc:
+            err = str(exc)
+            break
+        found.extend(flights.to_flights(
+            rows, airports, drive, out_d, back_d, days,
+            cfg["links"]["flight"], t["people"], t.get("direct_only", True)))
+
+    f = (flights.best(found, region["car_eur_day"], region["rental_eur_day"],
+                      t["max_stay_eur_night"], t["people"]) if found else None)
+    if f is None and err is None and pairs:
+        err = "geen directe vlucht gevonden in dit venster"
+
+    # Zonder vlucht rekenen we toch een begroting door op de logische datums.
+    if f is not None:
+        out_d = date.fromisoformat(f.out_date)
+        back_d = date.fromisoformat(f.back_date)
+        airport = f.dest
+    else:
+        out_d, back_d = pairs[0] if pairs else (block.start, block.end)
+        airport = min(drive, key=drive.get)
+        f = flights.Flight(
+            origin=cfg["origins"][0]["code"], dest=airport,
+            dest_name=airports.get(airport, airport),
+            out_date=out_d.isoformat(), back_date=back_d.isoformat(),
+            price_eur=None, carrier="?", stops=0, drive_min=drive.get(airport, 0),
+            link=flights.search_link(cfg["links"]["flight"],
+                                     cfg["origins"][0]["code"], airport,
+                                     out_d, back_d, t["people"]),
+            total_sessions=len(days),
+        )
+
+    c = booking.car_for(airport, region["car_eur_day"], out_d, back_d,
+                        cfg["links"]["car"])
+    g = booking.gear_for(region["rental_eur_day"], out_d, back_d)
+    st = booking.stay_for(spot, out_d, back_d, t["max_stay_eur_night"],
+                          t["people"], cfg["links"]["stay"], stays)
+    return f, c, g, st, err
 
 
 def main() -> int:
@@ -143,6 +175,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(Path(args.config))
+    stays = booking.load_stays(ROOT / "stays.yaml")
     today = date.today()
     tg = notify.Telegram(dry_run=args.dry_run)
     state = State(Path(args.state))
@@ -182,7 +215,7 @@ def main() -> int:
             continue
 
         try:
-            f, c, s = build_trip(block, cfg, today)
+            f, c, g, st, ferr = build_trip(block, cfg, today, stays)
         except Exception as exc:  # noqa: BLE001
             print(f"  {block.spot['name']} — trip bouwen mislukt: {exc}")
             traceback.print_exc()
@@ -190,9 +223,10 @@ def main() -> int:
 
         runner = next((b for b, _ in candidates
                        if b.spot["name"] != block.spot["name"]), None)
-        msg = notify.build_message(block, f, c, s, reason, tier,
-                                   cfg["trip"]["people"], runner,
-                                   cfg["trip"]["flight_reference_eur"])
+        msg = notify.build_message(
+            block, f, c, g, st, reason, tier, cfg["trip"]["people"],
+            cfg["regions"][block.spot["region"]]["name"], runner,
+            cfg["trip"]["flight_reference_eur"], ferr)
         if tg.send(msg):
             tg.poll(f"{block.spot['name']} — {block.n_days} dagen. Gaan we?",
                     ["Ik ben in 🤙", "Kan niet 😔"])

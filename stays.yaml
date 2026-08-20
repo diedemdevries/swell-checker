@@ -1,0 +1,17 @@
+# ============================================================
+#  EIGEN SLAAPPLEKKEN
+#
+#  Vul dit na elke trip aan. Staat er iets voor de spot waar de swell
+#  is, dan zet het voorstel dat erbij in plaats van alleen een zoeklink
+#  -- inclusief wat je er zelf van vond.
+#
+#  Voorbeeld:
+#
+#  La Graviere (Hossegor):
+#    - naam: Camping La Civelle
+#      eur_night: 22
+#      note: 10 min lopen naar de parking, koude douches
+#      link: https://...
+#
+#  De spotnaam moet exact overeenkomen met die in config.yaml.
+# ============================================================

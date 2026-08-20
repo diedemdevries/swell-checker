@@ -33,10 +33,11 @@ def make_rows(start: date, days: int, swell_m: float, period_s: float,
 
 def spot(**over):
     base = {
-        "name": "Testspot", "region": "Testland",
+        "name": "Testspot", "region": "baskenland",
         "lat": 43.0, "lon": -1.5,
         "faces": 285, "swell_window": [260, 340],
-        "size_factor": 1.2, "airport": "BIQ", "drive_min": 40,
+        "size_factor": 1.2,
+        "drive_min": {"BIQ": 40, "BOD": 105, "BIO": 145},
         "tier": "near", "season": list(range(1, 13)),
     }
     base.update(over)

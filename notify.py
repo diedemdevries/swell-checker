@@ -23,7 +23,7 @@ def _e(s) -> str:
 
 
 def period_verdict(p: float) -> str:
-    """Zegt in gewone taal wat de periode betekent -- de belangrijkste knop."""
+    """Wat de periode betekent, in gewone taal."""
     if p >= 14:
         return "lange grondzwelling, dit is het echte werk"
     if p >= 11:
@@ -33,27 +33,22 @@ def period_verdict(p: float) -> str:
     return "windzwelling, verwacht er niet te veel van"
 
 
-def build_message(block, flight, car, stay, reason: str, tier: str,
-                  people: int, runner_up=None, reference_eur: float = None) -> str:
+def build_message(block, flight, car, gear, stay, reason: str, tier: str,
+                  people: int, region_name: str, runner_up=None,
+                  reference_eur: Optional[float] = None,
+                  flight_error: Optional[str] = None) -> str:
     spot = block.spot
-    head = {
-        "new": "SWELL IN BEELD",
-        "confirm": "BEVESTIGD",
-        "upgrade": "OPGEWAARDEERD",
-    }.get(reason, "SWELL IN BEELD")
-
+    head = {"new": "SWELL IN BEELD", "confirm": "BEVESTIGD",
+            "upgrade": "OPGEWAARDEERD"}.get(reason, "SWELL IN BEELD")
     sub = ("vroege waarschuwing, forecast kan nog draaien"
            if tier == "early" else "binnen bereik, dit staat er echt")
 
-    out_d = date.fromisoformat(flight.out_date)
-    back_d = date.fromisoformat(flight.back_date)
-    nights = max((back_d - out_d).days, 1)
-
     lines = [
         f"<b>{_e(head)} — {_e(spot['name'])}</b>",
-        f"<i>{_e(spot['region'])} · {_e(sub)}</i>",
+        f"<i>{_e(region_name)} · {_e(sub)}</i>",
         "",
-        f"<b>{block.n_days} goede dagen</b> · {_e(nl_date(block.start))} t/m {_e(nl_date(block.end))}",
+        f"<b>{block.n_days} goede dagen</b> · {_e(nl_date(block.start))}"
+        f" t/m {_e(nl_date(block.end))}",
         f"Tot <b>{block.peak_surf_ft:.0f}ft</b> op <b>{block.peak_period_s:.0f}s</b>"
         f" — {_e(period_verdict(block.peak_period_s))}",
         f"Score <b>{block.score:.0f}</b>/100",
@@ -62,63 +57,72 @@ def build_message(block, flight, car, stay, reason: str, tier: str,
     ]
     for d in block.days:
         wind = f"{d.wind_kt:.0f}kt{' offshore' if d.offshore else ''}"
-        lines.append(
-            f"· {_e(nl_date(d.day))}  {d.surf_ft:.0f}ft @ {d.period_s:.0f}s"
-            f"  ·  {_e(wind)}  ·  {_e(d.window)}"
-        )
+        lines.append(f"· {_e(nl_date(d.day))}  {d.surf_ft:.0f}ft @ {d.period_s:.0f}s"
+                     f"  ·  {_e(wind)}  ·  {_e(d.window)}")
 
-    # --- begroting ---
-    car_pp = car.total / max(people, 1)
-    stay_pp = stay.total
-    flight_pp = flight.price_eur
-
+    # ---------------- begroting ----------------
     lines += ["", "<b>Wat het kost (per persoon)</b>"]
-    if flight_pp is None:
-        lines.append(f"✈️ Vlucht — <a href=\"{_e(flight.link)}\">prijs zelf checken</a>")
-    else:
-        duur = "" if reference_eur is None or flight_pp <= reference_eur else "  ⚠️ prijzig"
-        lines.append(
-            f"✈️ Vlucht  EUR {flight_pp:.0f}  ({_e(flight.origin)}→{_e(flight.dest)},"
-            f" {_e(flight.carrier)}){_e(duur)}  <a href=\"{_e(flight.link)}\">check</a>"
-        )
-    lines.append(
-        f"🚗 Auto  ~EUR {car_pp:.0f}  ({car.days}d à EUR {car.eur_day:.0f}, gedeeld)"
-        f"  <a href=\"{_e(car.link)}\">zoek</a>"
-    )
-    lines.append(
-        f"🛏️ Bed  tot EUR {stay_pp:.0f}  ({nights} nachten, plafond EUR"
-        f" {stay.max_eur_night:.0f}/nacht)  <a href=\"{_e(stay.link)}\">zoek</a>"
-    )
-    if flight_pp is not None:
-        ceiling = flight_pp + car_pp + stay_pp
-        floor = flight_pp + car_pp + stay_pp * 0.6
-        lines.append(
-            f"<b>Totaal ~EUR {floor:.0f}-{ceiling:.0f} p.p.</b> voor {nights} nachten"
-        )
-        lines.append("<i>Bed is een plafond, geen offerte — de onderkant is wat een "
-                     "dorm meestal doet.</i>")
-    else:
-        lines.append("<i>Totaal onbekend zolang de vluchtprijs mist</i>")
 
-    lines += [
-        "",
-        f"🛫 Heen {_e(nl_date(out_d))} · terug {_e(nl_date(back_d))}",
-        f"📍 {_e(car.airport)} → {_e(spot['name'])}, {spot['drive_min']} min rijden",
-    ]
+    if flight is None or flight.price_eur is None:
+        why = f" — {_e(flight_error)}" if flight_error else ""
+        lines.append(f"✈️ <b>Geen vluchtprijs</b>{why}")
+        if flight is not None and flight.link:
+            lines.append(f"   <a href=\"{_e(flight.link)}\">zelf zoeken</a>")
+    else:
+        duur = ("" if reference_eur is None or flight.price_eur <= reference_eur
+                else "  ⚠️ prijzig")
+        lines.append(
+            f"✈️ {_e(flight.origin)}→{_e(flight.dest)}  EUR {flight.price_eur:.0f}"
+            f"  ({_e(flight.carrier)}, direct){_e(duur)}"
+            f"  <a href=\"{_e(flight.link)}\">check</a>"
+        )
 
-    # De goedkoopste vlucht valt niet altijd precies om het blok heen.
-    gemist = []
-    if out_d > block.start:
-        gemist.append(f"de eerste {(out_d - block.start).days} dag(en)")
-    if back_d < block.end:
-        gemist.append(f"de laatste {(block.end - back_d).days} dag(en)")
-    if gemist:
-        lines.append(f"<i>Let op: met deze vlucht mis je {_e(' en '.join(gemist))} "
-                     f"van de swell — dit was wel de goedkoopste.</i>")
+    car_pp = car.total / max(people, 1)
+    lines.append(f"🚗 Auto  ~EUR {car_pp:.0f}  ({car.days}d à EUR {car.eur_day:.0f},"
+                 f" gedeeld)  <a href=\"{_e(car.link)}\">zoek</a>")
+    lines.append(f"🏄 Board + pak  ~EUR {gear.total:.0f}"
+                 f"  ({gear.days}d à EUR {gear.eur_day:.0f})")
+
+    if stay.known:
+        k = min(stay.known, key=lambda x: x.get("eur_night", 999))
+        note = f" — {k['note']}" if k.get("note") else ""
+        lines.append(f"🛏️ {_e(k.get('naam', 'bekend adres'))}"
+                     f"  ~EUR {stay.total:.0f}  ({stay.nights} nachten"
+                     f" à EUR {k.get('eur_night', '?')}){_e(note)}")
+    else:
+        lines.append(f"🛏️ Bed  tot EUR {stay.total:.0f}  ({stay.nights} nachten,"
+                     f" gratis annuleren)  <a href=\"{_e(stay.link)}\">zoek</a>")
+
+    if flight is not None and flight.price_eur is not None:
+        ceiling = flight.price_eur + car_pp + gear.total + stay.total
+        floor = ceiling - stay.total * 0.4
+        lines.append(f"<b>Totaal ~EUR {floor:.0f}-{ceiling:.0f} p.p.</b>"
+                     f" voor {stay.nights} nachten")
+
+    # ---------------- reis ----------------
+    if flight is not None:
+        out_d = date.fromisoformat(flight.out_date)
+        back_d = date.fromisoformat(flight.back_date)
+        lines += ["", f"🛫 Heen {_e(nl_date(out_d))} · terug {_e(nl_date(back_d))}"]
+        lines.append(f"📍 {_e(flight.dest_name)} → {_e(spot['name'])},"
+                     f" {flight.drive_min} min rijden")
+        if flight.total_sessions and flight.price_eur is not None:
+            if flight.misses_sessions:
+                lines.append(f"⚠️ Je mist {flight.misses_sessions} van de"
+                             f" {flight.total_sessions} surfdagen met deze vlucht"
+                             f" — dit was wel de beste combinatie van prijs en tijd.")
+            else:
+                lines.append(f"✅ Alle {flight.total_sessions} surfdagen blijven overeind")
 
     if runner_up is not None:
         lines += ["", f"<i>Ook in beeld: {_e(runner_up.spot['name'])}"
                       f" ({runner_up.n_days} dagen, score {runner_up.score:.0f})</i>"]
+
+    if flight_error and flight is not None and flight.price_eur is not None:
+        # Prijs gevonden, maar er ging onderweg iets mis. Niet verzwijgen.
+        lines += ["", f"<i>Let op: de vluchtzoeker gaf ook een fout"
+                      f" ({_e(flight_error)}) — mogelijk zijn niet alle datums"
+                      f" bekeken.</i>"]
 
     if tier == "early":
         lines += ["", "<i>Nog niet boeken op dit bericht alleen — er volgt een "

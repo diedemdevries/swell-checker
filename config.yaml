@@ -1,447 +1,807 @@
 # ============================================================
 #  SURF CHECK — alle instellingen staan hier.
 #  Je hoeft nooit in de Python-code te duiken om iets te wijzigen.
+#
+#  OPBOUW
+#  - regions : een groep vliegvelden die samen een surfgebied bedienen.
+#              Het script zoekt binnen de hele pool en kiest de beste
+#              combinatie van prijs en rijtijd.
+#  - spots   : elke spot hangt aan een regio en heeft per vliegveld een
+#              rijtijd in minuten. Staat een vliegveld er niet bij, dan
+#              telt het niet mee voor die spot.
+#
+#  BELANGRIJKSTE GETALLEN PER SPOT
+#    faces        welke kant de golf op kijkt (graden). Hieruit volgt wat
+#                 offshore is: wind uit (faces + 180).
+#    swell_window uit welke richtingen deining er daadwerkelijk in komt.
+#    size_factor  hoe hard de bodem de deining opblaast.
+#                 ~1.0 flauw strand · ~1.5 point · ~1.7 zware reef
+#    season       maanden waarin we uberhaupt scannen (scheelt ruis)
+#    tier         near = 2 goede dagen genoeg, far = 3
 # ============================================================
 
 criteria:
-  # --- Golven ---
-  min_surf_ft: 5.0        # ondergrens brekende golf
-  max_surf_ft: 12.0       # daarboven is het geen sessie meer
-  min_period_s: 8.0       # harde ondergrens (jouw keuze)
-  ideal_period_s: 14.0    # hier krijgt de score de volle punten
-
-  # --- Wind ---
-  max_wind_kt: 10.0           # uit elke richting
-  max_wind_kt_offshore: 15.0  # mag harder mits offshore
-  offshore_tolerance_deg: 50  # hoeveel graden van pal-offshore telt nog als offshore
-
-  # --- Ochtendvenster (lokale tijd) ---
-  # De thermische zeewind trekt bijna overal rond 11u aan, dus daarbuiten
-  # zoeken heeft geen zin. Een dag telt mee als er hierbinnen genoeg
-  # goede uren zitten.
+  min_surf_ft: 5.0
+  max_surf_ft: 12.0
+  min_period_s: 8.0
+  ideal_period_s: 14.0
+  max_wind_kt: 10.0
+  max_wind_kt_offshore: 15.0
+  offshore_tolerance_deg: 50
   morning_start_h: 6
   morning_end_h: 11
-  min_good_hours: 3       # aaneengesloten goede uren binnen dat venster
-
-  # --- Score-weging (moet optellen tot 1.0) ---
-  # Periode weegt het zwaarst: dat scheidt echte grondzwelling van windrommel.
+  min_good_hours: 3
   weights:
-    size: 0.30
+    size: 0.3
     period: 0.35
     wind: 0.25
-    direction: 0.10
-
-  min_day_score: 55       # een dag onder deze score telt niet mee als 'goede dag'
+    direction: 0.1
+  min_day_score: 55
 
 trip:
-  # Geen harde bovengrens meer: elk voorstel komt binnen, met de prijs erbij.
-  # Ligt hij hierboven, dan zet het bericht er alleen een opmerking bij.
-  flight_reference_eur: 200   # retour per persoon
-  # Hoeveel dagen speling rond het swell-blok mag Ryanair meenemen bij het
-  # zoeken naar de goedkoopste combinatie. Groter = vaker een koopje, maar
-  # je mist dan mogelijk de eerste of laatste surfdag.
+  people: 2
+  max_stay_eur_night: 50
+  flight_reference_eur: 200
   flex_days_before: 2
   flex_days_after: 2
-  max_hostel_eur_night: 50    # per persoon
-  people: 2
-  early_warning_days: [6, 9]  # niveau 1: swell zit nog zo ver weg
-  confirm_days: [0, 5]        # niveau 2: binnen dit venster is het serieus
   max_trip_nights: 6
+  early_warning_days:
+  - 6
+  - 9
+  confirm_days:
+  - 0
+  - 5
+  direct_only: true
+  max_drive_min: 240
 
-# Vertrekvliegvelden, op volgorde van jouw voorkeur bij gelijke prijs
+apify:
+  actor: johnvc~Google-Flights-Data-Scraper-Flight-and-Price-Search
+  max_charge_usd: 0.15
+  timeout_s: 180
+
 origins:
-  - code: EIN
-    name: Eindhoven
-  - code: AMS
-    name: Amsterdam
-  - code: RTM
-    name: Rotterdam
-  - code: NRN
-    name: Weeze
-  - code: CRL
-    name: Brussel Charleroi
-  - code: BRU
-    name: Brussel Zaventem
+- code: EIN
+  name: Eindhoven
+- code: AMS
+  name: Amsterdam
+- code: RTM
+  name: Rotterdam
+- code: NRN
+  name: Weeze
+- code: CRL
+  name: Brussel Charleroi
+- code: BRU
+  name: Brussel Zaventem
 
-# Reistijd-categorie bepaalt hoeveel goede dagen een trip moet hebben
 tiers:
-  near: {min_days: 2}   # Frankrijk, Spanje, Noord-Portugal
-  far:  {min_days: 3}   # Marokko, Ierland, Engeland, Algarve
+  near:
+    min_days: 2
+  far:
+    min_days: 3
 
-# ============================================================
-#  SPOTS
-#
-#  faces        = welke kant het strand/de golf op kijkt (graden).
-#                 Offshore = wind uit (faces + 180).
-#  swell_window = uit welke richtingen deining er daadwerkelijk in komt.
-#  size_factor  = hoe hard de bodem de deining opblaast.
-#                 ~1.0 flauw strand · ~1.5 point · ~1.7 zware reef
-#  season       = maanden waarin we überhaupt scannen (scheelt ruis)
-# ============================================================
+regions:
+  marokko:
+    name: Marokko
+    airports:
+    - code: AGA
+      name: Agadir
+    - code: RAK
+      name: Marrakesh
+    car_eur_day: 15
+    rental_eur_day: 20
+    tier: far
+  portugal-midden:
+    name: Portugal (midden)
+    airports:
+    - code: LIS
+      name: Lissabon
+    - code: OPO
+      name: Porto
+    car_eur_day: 25
+    rental_eur_day: 25
+    tier: near
+  algarve:
+    name: Algarve
+    airports:
+    - code: FAO
+      name: Faro
+    - code: LIS
+      name: Lissabon
+    car_eur_day: 22
+    rental_eur_day: 25
+    tier: far
+  baskenland:
+    name: Baskenland & zuidwest-Frankrijk
+    airports:
+    - code: BIO
+      name: Bilbao
+    - code: EAS
+      name: San Sebastián
+    - code: BIQ
+      name: Biarritz
+    - code: BOD
+      name: Bordeaux
+    car_eur_day: 42
+    rental_eur_day: 35
+    tier: near
+  noord-spanje:
+    name: Noord-Spanje
+    airports:
+    - code: SDR
+      name: Santander
+    - code: OVD
+      name: Asturias
+    - code: BIO
+      name: Bilbao
+    car_eur_day: 38
+    rental_eur_day: 30
+    tier: near
+  engeland:
+    name: Engeland
+    airports:
+    - code: NQY
+      name: Newquay
+    - code: BRS
+      name: Bristol
+    car_eur_day: 40
+    rental_eur_day: 35
+    tier: far
+  ierland:
+    name: Ierland
+    airports:
+    - code: DUB
+      name: Dublin
+    - code: NOC
+      name: Knock
+    - code: SNN
+      name: Shannon
+    car_eur_day: 33
+    rental_eur_day: 35
+    tier: far
+
 spots:
+- name: Anchor Point
+  region: marokko
+  lat: 30.545
+  lon: -9.728
+  faces: 290
+  swell_window:
+  - 270
+  - 340
+  size_factor: 1.5
+  drive_min:
+    AGA: 45
+    RAK: 180
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+- name: Banana Point
+  region: marokko
+  lat: 30.535
+  lon: -9.705
+  faces: 285
+  swell_window:
+  - 265
+  - 335
+  size_factor: 1.1
+  drive_min:
+    AGA: 40
+    RAK: 175
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+- name: Killer Point
+  region: marokko
+  lat: 30.556
+  lon: -9.734
+  faces: 295
+  swell_window:
+  - 280
+  - 340
+  size_factor: 1.6
+  drive_min:
+    AGA: 50
+    RAK: 185
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Imsouane Bay
+  region: marokko
+  lat: 30.839
+  lon: -9.82
+  faces: 280
+  swell_window:
+  - 260
+  - 330
+  size_factor: 1.0
+  drive_min:
+    AGA: 95
+    RAK: 150
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+- name: Supertubos (Peniche)
+  region: portugal-midden
+  lat: 39.345
+  lon: -9.367
+  faces: 250
+  swell_window:
+  - 240
+  - 320
+  size_factor: 1.6
+  drive_min:
+    LIS: 75
+    OPO: 150
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Baleal
+  region: portugal-midden
+  lat: 39.376
+  lon: -9.339
+  faces: 300
+  swell_window:
+  - 270
+  - 350
+  size_factor: 1.0
+  drive_min:
+    LIS: 80
+    OPO: 150
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Ribeira d'Ilhas (Ericeira)
+  region: portugal-midden
+  lat: 38.995
+  lon: -9.418
+  faces: 285
+  swell_window:
+  - 270
+  - 345
+  size_factor: 1.2
+  drive_min:
+    LIS: 50
+    OPO: 180
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Coxos (Ericeira)
+  region: portugal-midden
+  lat: 38.987
+  lon: -9.42
+  faces: 290
+  swell_window:
+  - 280
+  - 340
+  size_factor: 1.7
+  drive_min:
+    LIS: 50
+    OPO: 180
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Carcavelos
+  region: portugal-midden
+  lat: 38.68
+  lon: -9.337
+  faces: 200
+  swell_window:
+  - 190
+  - 280
+  size_factor: 1.0
+  drive_min:
+    LIS: 25
+    OPO: 200
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Arrifana (Algarve)
+  region: algarve
+  lat: 37.292
+  lon: -8.867
+  faces: 250
+  swell_window:
+  - 240
+  - 320
+  size_factor: 1.2
+  drive_min:
+    FAO: 75
+    LIS: 180
+  tier: far
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Beliche (Sagres)
+  region: algarve
+  lat: 37.018
+  lon: -8.98
+  faces: 230
+  swell_window:
+  - 220
+  - 300
+  size_factor: 1.2
+  drive_min:
+    FAO: 90
+    LIS: 200
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Mundaka
+  region: baskenland
+  lat: 43.407
+  lon: -2.698
+  faces: 315
+  swell_window:
+  - 300
+  - 355
+  size_factor: 1.5
+  drive_min:
+    BIO: 40
+    EAS: 75
+    BIQ: 100
+    BOD: 240
+  tier: near
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Zarautz
+  region: baskenland
+  lat: 43.286
+  lon: -2.17
+  faces: 340
+  swell_window:
+  - 300
+  - 30
+  size_factor: 1.0
+  drive_min:
+    BIO: 60
+    EAS: 20
+    BIQ: 60
+    BOD: 200
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Somo (Cantabria)
+  region: noord-spanje
+  lat: 43.45
+  lon: -3.75
+  faces: 350
+  swell_window:
+  - 310
+  - 40
+  size_factor: 1.0
+  drive_min:
+    SDR: 20
+    BIO: 100
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Rodiles (Asturias)
+  region: noord-spanje
+  lat: 43.533
+  lon: -5.383
+  faces: 20
+  swell_window:
+  - 330
+  - 60
+  size_factor: 1.3
+  drive_min:
+    OVD: 40
+    SDR: 150
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: La Graviere (Hossegor)
+  region: baskenland
+  lat: 43.665
+  lon: -1.44
+  faces: 285
+  swell_window:
+  - 260
+  - 340
+  size_factor: 1.6
+  drive_min:
+    BIQ: 40
+    EAS: 75
+    BOD: 105
+    BIO: 145
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Les Bourdaines (Seignosse)
+  region: baskenland
+  lat: 43.69
+  lon: -1.43
+  faces: 285
+  swell_window:
+  - 260
+  - 340
+  size_factor: 1.2
+  drive_min:
+    BIQ: 45
+    EAS: 80
+    BOD: 100
+    BIO: 150
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: La Piste (Capbreton)
+  region: baskenland
+  lat: 43.64
+  lon: -1.445
+  faces: 285
+  swell_window:
+  - 265
+  - 335
+  size_factor: 1.5
+  drive_min:
+    BIQ: 30
+    EAS: 65
+    BOD: 110
+    BIO: 140
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Lacanau
+  region: baskenland
+  lat: 45.0
+  lon: -1.203
+  faces: 270
+  swell_window:
+  - 250
+  - 330
+  size_factor: 1.0
+  drive_min:
+    BOD: 60
+    BIQ: 180
+  tier: near
+  season:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+- name: Fistral (Newquay)
+  region: engeland
+  lat: 50.416
+  lon: -5.099
+  faces: 285
+  swell_window:
+  - 260
+  - 340
+  size_factor: 1.1
+  drive_min:
+    NQY: 15
+    BRS: 150
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Porthleven
+  region: engeland
+  lat: 50.084
+  lon: -5.316
+  faces: 210
+  swell_window:
+  - 190
+  - 270
+  size_factor: 1.6
+  drive_min:
+    NQY: 60
+    BRS: 180
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Croyde
+  region: engeland
+  lat: 51.13
+  lon: -4.24
+  faces: 290
+  swell_window:
+  - 270
+  - 340
+  size_factor: 1.1
+  drive_min:
+    BRS: 120
+    NQY: 90
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Lahinch
+  region: ierland
+  lat: 52.933
+  lon: -9.35
+  faces: 265
+  swell_window:
+  - 240
+  - 320
+  size_factor: 1.1
+  drive_min:
+    SNN: 45
+    NOC: 120
+    DUB: 180
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+- name: Bundoran (The Peak)
+  region: ierland
+  lat: 54.478
+  lon: -8.29
+  faces: 290
+  swell_window:
+  - 270
+  - 340
+  size_factor: 1.5
+  drive_min:
+    NOC: 90
+    DUB: 200
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Easkey Right
+  region: ierland
+  lat: 54.287
+  lon: -8.964
+  faces: 315
+  swell_window:
+  - 290
+  - 10
+  size_factor: 1.3
+  drive_min:
+    NOC: 60
+    DUB: 210
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
+- name: Strandhill
+  region: ierland
+  lat: 54.27
+  lon: -8.6
+  faces: 290
+  swell_window:
+  - 270
+  - 340
+  size_factor: 1.1
+  drive_min:
+    NOC: 45
+    DUB: 200
+  tier: far
+  season:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 1
+  - 2
+  - 3
+  - 4
 
-  # ---------- MAROKKO (far) ----------
-  - name: Anchor Point
-    region: Marokko
-    lat: 30.5450
-    lon: -9.7280
-    faces: 290
-    swell_window: [270, 340]
-    size_factor: 1.5
-    airport: AGA
-    drive_min: 45
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
-
-  - name: Banana Point
-    region: Marokko
-    lat: 30.5350
-    lon: -9.7050
-    faces: 285
-    swell_window: [265, 335]
-    size_factor: 1.1
-    airport: AGA
-    drive_min: 40
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
-
-  - name: Killer Point
-    region: Marokko
-    lat: 30.5560
-    lon: -9.7340
-    faces: 295
-    swell_window: [280, 340]
-    size_factor: 1.6
-    airport: AGA
-    drive_min: 50
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Imsouane Bay
-    region: Marokko
-    lat: 30.8390
-    lon: -9.8200
-    faces: 280
-    swell_window: [260, 330]
-    size_factor: 1.0
-    airport: AGA
-    drive_min: 95
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
-
-  # ---------- PORTUGAL ----------
-  - name: Supertubos (Peniche)
-    region: Portugal
-    lat: 39.3450
-    lon: -9.3670
-    faces: 250
-    swell_window: [240, 320]
-    size_factor: 1.6
-    airport: LIS
-    drive_min: 75
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Baleal
-    region: Portugal
-    lat: 39.3760
-    lon: -9.3390
-    faces: 300
-    swell_window: [270, 350]
-    size_factor: 1.0
-    airport: LIS
-    drive_min: 80
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Ribeira d'Ilhas (Ericeira)
-    region: Portugal
-    lat: 38.9950
-    lon: -9.4180
-    faces: 285
-    swell_window: [270, 345]
-    size_factor: 1.2
-    airport: LIS
-    drive_min: 50
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Coxos (Ericeira)
-    region: Portugal
-    lat: 38.9870
-    lon: -9.4200
-    faces: 290
-    swell_window: [280, 340]
-    size_factor: 1.7
-    airport: LIS
-    drive_min: 50
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Carcavelos
-    region: Portugal
-    lat: 38.6800
-    lon: -9.3370
-    faces: 200
-    swell_window: [190, 280]
-    size_factor: 1.0
-    airport: LIS
-    drive_min: 25
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Arrifana (Algarve)
-    region: Portugal
-    lat: 37.2920
-    lon: -8.8670
-    faces: 250
-    swell_window: [240, 320]
-    size_factor: 1.2
-    airport: FAO
-    drive_min: 75
-    tier: far
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Beliche (Sagres)
-    region: Portugal
-    lat: 37.0180
-    lon: -8.9800
-    faces: 230
-    swell_window: [220, 300]
-    size_factor: 1.2
-    airport: FAO
-    drive_min: 90
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  # ---------- SPANJE ----------
-  - name: Mundaka
-    region: Spanje
-    lat: 43.4070
-    lon: -2.6980
-    faces: 315
-    swell_window: [300, 355]
-    size_factor: 1.5
-    airport: BIO
-    drive_min: 40
-    tier: near
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Zarautz
-    region: Spanje
-    lat: 43.2860
-    lon: -2.1700
-    faces: 340
-    swell_window: [300, 30]
-    size_factor: 1.0
-    airport: BIO
-    drive_min: 40
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Somo (Cantabria)
-    region: Spanje
-    lat: 43.4500
-    lon: -3.7500
-    faces: 350
-    swell_window: [310, 40]
-    size_factor: 1.0
-    airport: SDR
-    drive_min: 20
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Rodiles (Asturias)
-    region: Spanje
-    lat: 43.5330
-    lon: -5.3830
-    faces: 20
-    swell_window: [330, 60]
-    size_factor: 1.3
-    airport: OVD
-    drive_min: 40
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  # ---------- ZUID-FRANKRIJK ----------
-  - name: La Graviere (Hossegor)
-    region: Frankrijk
-    lat: 43.6650
-    lon: -1.4400
-    faces: 285
-    swell_window: [260, 340]
-    size_factor: 1.6
-    airport: BIQ
-    drive_min: 40
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Les Bourdaines (Seignosse)
-    region: Frankrijk
-    lat: 43.6900
-    lon: -1.4300
-    faces: 285
-    swell_window: [260, 340]
-    size_factor: 1.2
-    airport: BIQ
-    drive_min: 45
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: La Piste (Capbreton)
-    region: Frankrijk
-    lat: 43.6400
-    lon: -1.4450
-    faces: 285
-    swell_window: [265, 335]
-    size_factor: 1.5
-    airport: BIQ
-    drive_min: 30
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  - name: Lacanau
-    region: Frankrijk
-    lat: 45.0000
-    lon: -1.2030
-    faces: 270
-    swell_window: [250, 330]
-    size_factor: 1.0
-    airport: BOD
-    drive_min: 60
-    tier: near
-    season: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-  # ---------- ENGELAND (strengere lat: slechte bereikbaarheid) ----------
-  - name: Fistral (Newquay)
-    region: Engeland
-    lat: 50.4160
-    lon: -5.0990
-    faces: 285
-    swell_window: [260, 340]
-    size_factor: 1.1
-    airport: NQY
-    drive_min: 15
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Porthleven
-    region: Engeland
-    lat: 50.0840
-    lon: -5.3160
-    faces: 210
-    swell_window: [190, 270]
-    size_factor: 1.6
-    airport: NQY
-    drive_min: 60
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Croyde
-    region: Engeland
-    lat: 51.1300
-    lon: -4.2400
-    faces: 290
-    swell_window: [270, 340]
-    size_factor: 1.1
-    airport: BRS
-    drive_min: 120
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  # ---------- IERLAND ----------
-  - name: Lahinch
-    region: Ierland
-    lat: 52.9330
-    lon: -9.3500
-    faces: 265
-    swell_window: [240, 320]
-    size_factor: 1.1
-    airport: SNN
-    drive_min: 45
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4, 5]
-
-  - name: Bundoran (The Peak)
-    region: Ierland
-    lat: 54.4780
-    lon: -8.2900
-    faces: 290
-    swell_window: [270, 340]
-    size_factor: 1.5
-    airport: NOC
-    drive_min: 90
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Easkey Right
-    region: Ierland
-    lat: 54.2870
-    lon: -8.9640
-    faces: 315
-    swell_window: [290, 10]
-    size_factor: 1.3
-    airport: NOC
-    drive_min: 60
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-  - name: Strandhill
-    region: Ierland
-    lat: 54.2700
-    lon: -8.6000
-    faces: 290
-    swell_window: [270, 340]
-    size_factor: 1.1
-    airport: NOC
-    drive_min: 45
-    tier: far
-    season: [9, 10, 11, 12, 1, 2, 3, 4]
-
-# ============================================================
-#  HUURAUTO — schatting per bestemming, euro per dag, kleinste klasse.
-#  Dit is een RICHTPRIJS voor de begroting in het voorstel; de echte
-#  prijs komt uit de zoeklink. Pas aan zodra je ziet wat je echt betaalt.
-# ============================================================
-car_eur_day:
-  AGA: 15
-  LIS: 25
-  FAO: 22
-  BIO: 40
-  SDR: 38
-  OVD: 38
-  BIQ: 45
-  BOD: 42
-  NQY: 40
-  BRS: 38
-  SNN: 35
-  NOC: 32
-
-# Naam van de stad die we in de hostel- en autolinks gebruiken
-airport_city:
-  AGA: Agadir
-  LIS: Lisbon
-  FAO: Faro
-  BIO: Bilbao
-  SDR: Santander
-  OVD: Oviedo
-  BIQ: Biarritz
-  BOD: Bordeaux
-  NQY: Newquay
-  BRS: Bristol
-  SNN: Shannon
-  NOC: Knock
-
-# ============================================================
-#  ZOEKLINKS
-#  Deze staan hier zodat je ze kunt bijstellen zonder in de code te duiken.
-#  Placeholders: {ORIGIN} {DEST} (hoofdletters IATA), {origin} {dest}
-#  (kleine letters), {out} {back} (JJJJ-MM-DD), {out_short} {back_short}
-#  (JJMMDD), {city}, {people}, {maxprice}, {AIRPORT}
-# ============================================================
 links:
-  # Skyscanner pakt ook Transavia en Wizz mee, dus dit is de controlelink
-  # naast de Ryanair-prijs die het script zelf ophaalt.
-  flight: "https://www.skyscanner.nl/transport/vluchten/{origin}/{dest}/{out_short}/{back_short}/?adults={people}"
-  car: "https://www.kayak.nl/cars/{AIRPORT}/{out}/{back}"
-  stay: "https://www.booking.com/searchresults.html?ss={city}&checkin={out}&checkout={back}&group_adults={people}&nflt=price%3DEUR-min-{maxprice}-1"
+  flight: https://www.skyscanner.nl/transport/vluchten/{origin}/{dest}/{out_short}/{back_short}/?adults={people}
+  car: https://www.kayak.nl/cars/{AIRPORT}/{out}/{back}
+  stay: https://www.booking.com/searchresults.html?latitude={lat}&longitude={lon}&checkin={out}&checkout={back}&group_adults={people}&nflt=price%3DEUR-min-{maxprice}-1%3Bfc%3D2
+
