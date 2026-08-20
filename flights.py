@@ -96,6 +96,26 @@ def _sessions_by_date(days: List[date], out_d: date, back_d: date) -> int:
 # ------------------------------------------------------------------
 #  Apify aanroepen
 # ------------------------------------------------------------------
+def _as_int(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _airport_code(v) -> str:
+    """Google zet het vliegveld in een object met een id; soms is het los."""
+    if isinstance(v, dict):
+        return str(v.get("id") or v.get("code") or "")
+    return str(v or "")
+
+
+def _airport_time(v):
+    if isinstance(v, dict):
+        return v.get("time") or v.get("datetime")
+    return None
+
+
 def _first_number(d: dict, *keys):
     for k in keys:
         v = d.get(k)
@@ -132,7 +152,7 @@ def _rows(payload) -> List[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        for key in ("all_flights", "flights", "best_flights", "other_flights", "results"):
+        for key in ("best_flights", "other_flights", "all_flights", "results"):
             block = item.get(key)
             if isinstance(block, list):
                 out.extend(x for x in block if isinstance(x, dict))
@@ -180,7 +200,8 @@ def search(cfg: dict, origins: List[dict], airports: List[str],
         raise FlightError("Apify-tegoed op of uitgavenlimiet bereikt")
     if r.status_code in (401, 403):
         raise FlightError("Apify-token afgekeurd")
-    if r.status_code != 200:
+    # run-sync geeft 201 terug als de run klaar is en de dataset meekomt.
+    if r.status_code not in (200, 201):
         raise FlightError(f"Apify gaf {r.status_code}: {r.text[:200]}")
 
     try:
@@ -206,23 +227,35 @@ def to_flights(rows: List[dict], airports: dict, drive_min: dict,
         price = _first_number(row, "price", "total_price", "fare", "amount")
         if price is None:
             continue
-        stops = row.get("stops")
-        try:
-            stops = int(stops)
-        except (TypeError, ValueError):
-            stops = 0
+        # Google Flights levert per reis een lijst deeltrajecten; daaruit
+        # volgen het aantal overstappen, de vliegvelden en de tijden.
+        segs = row.get("flights") if isinstance(row.get("flights"), list) else []
+        first = segs[0] if segs else {}
+        last = segs[-1] if segs else {}
+
+        if segs:
+            stops = len(segs) - 1
+        else:
+            lay = row.get("layovers")
+            stops = len(lay) if isinstance(lay, list) else _as_int(row.get("stops"))
         if direct_only and stops > 0:
             continue
 
-        dest = (_first_text(row, "arrival_id", "arrival_airport", "destination_id",
-                            "to", "arrivalAirport") or "?")[:3].upper()
-        origin = (_first_text(row, "departure_id", "departure_airport", "origin_id",
-                              "from", "departureAirport") or "?")[:3].upper()
+        origin = (_airport_code(first.get("departure_airport"))
+                  or _first_text(row, "departure_id", "origin_id", "from"))[:3].upper()
+        dest = (_airport_code(last.get("arrival_airport"))
+                or _first_text(row, "arrival_id", "destination_id", "to"))[:3].upper()
         if dest not in drive_min:
             continue                       # bestemming hoort niet bij deze spot
 
-        arrive = row.get("arrival_time") or row.get("outbound_arrival_time")
-        depart = row.get("return_departure_time") or row.get("inbound_departure_time")
+        arrive = (_airport_time(last.get("arrival_airport"))
+                  or row.get("arrival_time") or row.get("outbound_arrival_time"))
+        depart = (row.get("return_departure_time")
+                  or row.get("inbound_departure_time"))
+        if not depart:
+            # Bij een retour geeft Google in deze stap alleen de heenreis.
+            # We rekenen dan met een avondvlucht terug op de gevraagde dag.
+            depart = f"{back_d.isoformat()}T20:00:00"
         kept = (sessions_kept(days, arrive, depart)
                 if (_dt(arrive) or _dt(depart))
                 else _sessions_by_date(days, out_d, back_d))
