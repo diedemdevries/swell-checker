@@ -311,7 +311,13 @@ fl = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
 check("tussenstop valt af bij direct-only", all(f.stops == 0 for f in fl))
 check("onbekende bestemming valt af", all(f.dest == "AGA" for f in fl))
 check("rij zonder prijs valt af", len(fl) == 1, f"{[(f.dest, f.price_eur) for f in fl]}")
-check("prijs komt goed door", fl[0].price_eur == 274.0)
+check("prijs wordt per persoon gerekend", fl[0].price_eur == 137.0,
+      f"{fl[0].price_eur}")
+fl_solo = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
+                             date(2026, 10, 14), date(2026, 10, 18), DAYS,
+                             "https://x/{origin}/{dest}", 1, True)
+check("bij een persoon blijft de prijs zoals hij is",
+      fl_solo[0].price_eur == 274.0, f"{fl_solo[0].price_eur}")
 
 fl_stops = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
                               date(2026, 10, 14), date(2026, 10, 18), DAYS,
@@ -350,6 +356,8 @@ gf = flights.to_flights(gf_rows, {"AGA": "Agadir"}, {"AGA": 45},
                         [date(2026, 8, 23), date(2026, 8, 24)],
                         "https://x/{origin}/{dest}", 2, True)
 check("tussenlanding via Fez valt af bij direct-only", len(gf) == 2, f"{[f.carrier for f in gf]}")
+check("maatschappij komt uit het deeltraject",
+      sorted(f.carrier for f in gf) == ["KLM", "Transavia"], f"{[f.carrier for f in gf]}")
 check("vertrekvliegveld komt uit het eerste deeltraject",
       sorted(f.origin for f in gf) == ["AMS", "AMS"], f"{[f.origin for f in gf]}")
 check("aankomsttijd komt uit het laatste deeltraject",
