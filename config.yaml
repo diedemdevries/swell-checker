@@ -55,7 +55,7 @@ trip:
   max_drive_min: 240
 
 apify:
-  actor: johnvc~Google-Flights-Data-Scraper-Flight-and-Price-Search
+  actor: johnvc~google-flights-data-scraper-flight-and-price-search
   max_charge_usd: 0.15
   timeout_s: 180
 

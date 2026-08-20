@@ -22,7 +22,7 @@ from typing import List, Optional
 
 import requests
 
-API = "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
+API = "https://api.apify.com/v2/actors/{actor}/run-sync-get-dataset-items"
 
 
 class FlightError(RuntimeError):

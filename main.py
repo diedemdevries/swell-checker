@@ -221,6 +221,13 @@ def main() -> int:
             traceback.print_exc()
             continue
 
+        if ferr:
+            print(f"  {block.spot['name']} - vluchten: {ferr}")
+        elif f.price_eur is not None:
+            print(f"  {block.spot['name']} - vlucht {f.origin}->{f.dest}"
+                  f" EUR {f.price_eur:.0f} ({f.carrier}),"
+                  f" {f.sessions_kept}/{f.total_sessions} sessies")
+
         runner = next((b for b, _ in candidates
                        if b.spot["name"] != block.spot["name"]), None)
         msg = notify.build_message(
