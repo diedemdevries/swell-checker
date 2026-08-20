@@ -227,6 +227,10 @@ def to_flights(rows: List[dict], airports: dict, drive_min: dict,
         price = _first_number(row, "price", "total_price", "fare", "amount")
         if price is None:
             continue
+        # Google Flights geeft de prijs voor het hele gezelschap, niet per
+        # persoon. We rekenen hier meteen om, want al het andere in het
+        # bericht (auto, bed, materiaal) staat ook per persoon.
+        price = price / max(people, 1)
         # Google Flights levert per reis een lijst deeltrajecten; daaruit
         # volgen het aantal overstappen, de vliegvelden en de tijden.
         segs = row.get("flights") if isinstance(row.get("flights"), list) else []
@@ -263,7 +267,8 @@ def to_flights(rows: List[dict], airports: dict, drive_min: dict,
         out.append(Flight(
             origin=origin, dest=dest, dest_name=airports.get(dest, dest),
             out_date=out_d.isoformat(), back_date=back_d.isoformat(),
-            price_eur=price, carrier=_first_text(row, "airlines", "airline", "carrier"),
+            price_eur=price, carrier=(_first_text(first, "airline", "carrier", "airline_name")
+                     or _first_text(row, "airlines", "airline", "carrier")),
             stops=stops, drive_min=drive_min.get(dest, 0),
             link=search_link(link_tpl, origin, dest, out_d, back_d, people),
             out_arrive=str(arrive) if arrive else None,
