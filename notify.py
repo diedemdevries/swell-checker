@@ -1,4 +1,9 @@
-"""Het voorstel bouwen en naar Telegram sturen."""
+"""Het voorstel bouwen en naar Telegram sturen.
+
+Opbouw van het bericht: eerst waar, wanneer en wat het kost. Daarna de
+vlucht, dan de golven per dag. Links staan niet in de tekst maar als
+knoppen eronder.
+"""
 
 import html
 import os
@@ -18,117 +23,138 @@ def nl_date(d: date) -> str:
     return f"{DUTCH_DAYS[d.weekday()]} {d.day} {DUTCH_MONTHS[d.month]}"
 
 
+def nl_range(a: date, b: date) -> str:
+    if a.month == b.month:
+        return f"{DUTCH_DAYS[a.weekday()]} {a.day} – {nl_date(b)}"
+    return f"{nl_date(a)} – {nl_date(b)}"
+
+
 def _e(s) -> str:
-    return html.escape(str(s))
+    return html.escape(str(s), quote=False)
 
 
 def period_verdict(p: float) -> str:
     """Wat de periode betekent, in gewone taal."""
     if p >= 14:
-        return "lange grondzwelling, dit is het echte werk"
+        return "lange grondzwelling"
     if p >= 11:
         return "nette grondzwelling"
     if p >= 9:
-        return "korte zwelling, prima maar niet bijzonder"
-    return "windzwelling, verwacht er niet te veel van"
+        return "korte zwelling"
+    return "windzwelling"
 
 
-def build_message(block, flight, car, gear, stay, reason: str, tier: str,
-                  people: int, region_name: str, runner_up=None,
-                  reference_eur: Optional[float] = None,
-                  flight_error: Optional[str] = None) -> str:
+def _drive(mins: int) -> str:
+    if mins < 60:
+        return f"{mins} min"
+    h, m = divmod(mins, 60)
+    return f"{h}u{m:02d}" if m else f"{h}u"
+
+
+def pick_alternative(options):
+    """Tweede keus, bij voorkeur naar een ander vliegveld dan de eerste."""
+    if len(options) < 2:
+        return None
+    first = options[0]
+    for o in options[1:]:
+        if o.dest != first.dest:
+            return o
+    return options[1]
+
+
+def total_pp(options, car, gear, stay, people: int) -> float:
+    flight = options[0].typical_eur if options else 0.0
+    return flight + car.total / max(people, 1) + gear.total + stay.total
+
+
+def build_message(block, options, car, gear, stay, out_d: date, back_d: date,
+                  reason: str, tier: str,
+                  people: int, region_name: str, also: Optional[List[str]] = None,
+                  hot_score: float = 85.0) -> str:
     spot = block.spot
-    head = {"new": "SWELL IN BEELD", "confirm": "BEVESTIGD",
-            "upgrade": "OPGEWAARDEERD"}.get(reason, "SWELL IN BEELD")
-    sub = ("vroege waarschuwing, forecast kan nog draaien"
-           if tier == "early" else "binnen bereik, dit staat er echt")
+    # ---------------- kop ----------------
+    if tier == "early":
+        icon, label = "👀", "VROEG SIGNAAL · "
+    elif reason == "confirm":
+        icon, label = "✅", "BEVESTIGD · "
+    elif reason == "upgrade":
+        icon, label = "⬆️", "BETER GEWORDEN · "
+    else:
+        icon, label = ("🔥" if block.score >= hot_score else "🌊"), ""
+
+    nights = stay.nights
+    all_off = all(d.offshore for d in block.days)
+    wind = "'s ochtends offshore" if all_off else "'s ochtends weinig wind"
 
     lines = [
-        f"<b>{_e(head)} — {_e(spot['name'])}</b>",
-        f"<i>{_e(region_name)} · {_e(sub)}</i>",
-        "",
-        f"<b>{block.n_days} goede dagen</b> · {_e(nl_date(block.start))}"
-        f" t/m {_e(nl_date(block.end))}",
-        f"Tot <b>{block.peak_surf_ft:.0f}ft</b> op <b>{block.peak_period_s:.0f}s</b>"
-        f" — {_e(period_verdict(block.peak_period_s))}",
-        f"Score <b>{block.score:.0f}</b>/100",
-        "",
-        "<b>Per dag</b>",
+        f"{icon} <b>{_e(label)}{_e(spot['name'].upper())}</b>",
+        f"{block.n_days} goede dagen · {_e(nl_range(block.start, block.end))}"
+        f" · {_e(region_name)}",
+        f"<b>{block.peak_surf_ft:.0f}ft @ {block.peak_period_s:.0f}s</b>"
+        f" · {_e(period_verdict(block.peak_period_s))} · {_e(wind)}",
+        f"≈ <b>€{total_pp(options, car, gear, stay, people):.0f} p.p.</b>"
+        f" alles-in · {nights} nachten",
     ]
-    for d in block.days:
-        wind = f"{d.wind_kt:.0f}kt{' offshore' if d.offshore else ''}"
-        lines.append(f"· {_e(nl_date(d.day))}  {d.surf_ft:.0f}ft @ {d.period_s:.0f}s"
-                     f"  ·  {_e(wind)}  ·  {_e(d.window)}")
 
-    # ---------------- begroting ----------------
-    lines += ["", "<b>Wat het kost (per persoon)</b>"]
-
-    if flight is None or flight.price_eur is None:
-        why = f" — {_e(flight_error)}" if flight_error else ""
-        lines.append(f"✈️ <b>Geen vluchtprijs</b>{why}")
-        if flight is not None and flight.link:
-            lines.append(f"   <a href=\"{_e(flight.link)}\">zelf zoeken</a>")
+    # ---------------- vlucht ----------------
+    lines.append("")
+    if options:
+        best = options[0]
+        lines.append(f"✈️ <b>{_e(best.origin_name)} → {_e(best.dest_name)}</b>"
+                     f" · {_e(best.airline)} · ~€{best.typical_eur:.0f}")
+        lines.append(f"   heen {_e(nl_date(out_d))} · terug {_e(nl_date(back_d))}"
+                     f" · {_e(_drive(best.drive_min))} naar de spot")
+        alt = pick_alternative(options)
+        if alt is not None:
+            lines.append(f"   of {_e(alt.origin_name)} → {_e(alt.dest_name)}"
+                         f" · {_e(alt.airline)} · ~€{alt.typical_eur:.0f}"
+                         f" · {_e(_drive(alt.drive_min))} rijden")
     else:
-        duur = ("" if reference_eur is None or flight.price_eur <= reference_eur
-                else "  ⚠️ prijzig")
-        lines.append(
-            f"✈️ {_e(flight.origin)}→{_e(flight.dest)}  EUR {flight.price_eur:.0f}"
-            f"  ({_e(flight.carrier)}, direct){_e(duur)}"
-            f"  <a href=\"{_e(flight.link)}\">check</a>"
-        )
+        lines.append("✈️ Geen vaste directe route bekend voor deze spot")
 
-    car_pp = car.total / max(people, 1)
-    lines.append(f"🚗 Auto  ~EUR {car_pp:.0f}  ({car.days}d à EUR {car.eur_day:.0f},"
-                 f" gedeeld)  <a href=\"{_e(car.link)}\">zoek</a>")
-    lines.append(f"🏄 Board + pak  ~EUR {gear.total:.0f}"
-                 f"  ({gear.days}d à EUR {gear.eur_day:.0f})")
+    # ---------------- golven per dag ----------------
+    rows = []
+    for d in block.days:
+        off = " off" if d.offshore else ""
+        rows.append(f"{DUTCH_DAYS[d.day.weekday()]} {d.day.day:<2} "
+                    f"{d.surf_ft:>2.0f}ft {d.period_s:>2.0f}s "
+                    f"{d.wind_kt:>2.0f}kt{off}")
+    lines += ["", "<pre>" + _e("\n".join(rows)) + "</pre>"]
 
+    if also:
+        lines.append(f"Ook goed in de buurt: {_e(', '.join(also))}")
+
+    # ---------------- kosten ----------------
+    flight_part = f"vlucht ~{options[0].typical_eur:.0f} · " if options else ""
     if stay.known:
         k = min(stay.known, key=lambda x: x.get("eur_night", 999))
-        note = f" — {k['note']}" if k.get("note") else ""
-        lines.append(f"🛏️ {_e(k.get('naam', 'bekend adres'))}"
-                     f"  ~EUR {stay.total:.0f}  ({stay.nights} nachten"
-                     f" à EUR {k.get('eur_night', '?')}){_e(note)}")
+        bed = f"{k.get('naam', 'bekend adres')} ~{stay.total:.0f}"
     else:
-        lines.append(f"🛏️ Bed  tot EUR {stay.total:.0f}  ({stay.nights} nachten,"
-                     f" gratis annuleren)  <a href=\"{_e(stay.link)}\">zoek</a>")
-
-    if flight is not None and flight.price_eur is not None:
-        ceiling = flight.price_eur + car_pp + gear.total + stay.total
-        floor = ceiling - stay.total * 0.4
-        lines.append(f"<b>Totaal ~EUR {floor:.0f}-{ceiling:.0f} p.p.</b>"
-                     f" voor {stay.nights} nachten")
-
-    # ---------------- reis ----------------
-    if flight is not None:
-        out_d = date.fromisoformat(flight.out_date)
-        back_d = date.fromisoformat(flight.back_date)
-        lines += ["", f"🛫 Heen {_e(nl_date(out_d))} · terug {_e(nl_date(back_d))}"]
-        lines.append(f"📍 {_e(flight.dest_name)} → {_e(spot['name'])},"
-                     f" {flight.drive_min} min rijden")
-        if flight.total_sessions and flight.price_eur is not None:
-            if flight.misses_sessions:
-                lines.append(f"⚠️ Je mist {flight.misses_sessions} van de"
-                             f" {flight.total_sessions} surfdagen met deze vlucht"
-                             f" — dit was wel de beste combinatie van prijs en tijd.")
-            else:
-                lines.append(f"✅ Alle {flight.total_sessions} surfdagen blijven overeind")
-
-    if runner_up is not None:
-        lines += ["", f"<i>Ook in beeld: {_e(runner_up.spot['name'])}"
-                      f" ({runner_up.n_days} dagen, score {runner_up.score:.0f})</i>"]
-
-    if flight_error and flight is not None and flight.price_eur is not None:
-        # Prijs gevonden, maar er ging onderweg iets mis. Niet verzwijgen.
-        lines += ["", f"<i>Let op: de vluchtzoeker gaf ook een fout"
-                      f" ({_e(flight_error)}) — mogelijk zijn niet alle datums"
-                      f" bekeken.</i>"]
+        bed = f"bed ≤{stay.total:.0f}"
+    lines += ["", f"<i>{flight_part}auto ~{car.total / max(people, 1):.0f}"
+                  f" · board+pak ~{gear.total:.0f} · {_e(bed)}",
+              "Richtprijzen p.p. — de echte prijs zie je via de knoppen.</i>"]
 
     if tier == "early":
-        lines += ["", "<i>Nog niet boeken op dit bericht alleen — er volgt een "
-                      "bevestiging zodra de swell binnen vijf dagen zit.</i>"]
+        lines += ["", "<i>Forecast kan nog draaien. Nog niet boeken, er volgt een"
+                      " bevestiging als de swell binnen vijf dagen zit.</i>"]
 
     return "\n".join(lines)
+
+
+def buttons(options, car, stay) -> List[List[dict]]:
+    """Knoppen onder het bericht: vluchten, auto, bed."""
+    rows: List[List[dict]] = []
+    if options:
+        row = [{"text": f"✈️ {options[0].origin}→{options[0].dest}",
+                "url": options[0].link}]
+        alt = pick_alternative(options)
+        if alt is not None:
+            row.append({"text": f"✈️ {alt.origin}→{alt.dest}", "url": alt.link})
+        rows.append(row)
+    rows.append([{"text": "🚗 Auto", "url": car.link},
+                 {"text": "🛏️ Bed", "url": stay.link}])
+    return rows
 
 
 class Telegram:
@@ -138,18 +164,20 @@ class Telegram:
         self.chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
         self.dry_run = dry_run or not (self.token and self.chat_id)
 
-    def send(self, text: str) -> bool:
+    def send(self, text: str, keyboard: Optional[List[List[dict]]] = None) -> bool:
         if self.dry_run:
             print("--- [dry run] Telegram-bericht ---")
             print(text)
+            if keyboard:
+                print("knoppen: " + " | ".join(b["text"] for row in keyboard for b in row))
             print("--- einde bericht ---")
             return True
-        r = requests.post(
-            API.format(token=self.token, method="sendMessage"),
-            json={"chat_id": self.chat_id, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
-            timeout=20,
-        )
+        body = {"chat_id": self.chat_id, "text": text,
+                "parse_mode": "HTML", "disable_web_page_preview": True}
+        if keyboard:
+            body["reply_markup"] = {"inline_keyboard": keyboard}
+        r = requests.post(API.format(token=self.token, method="sendMessage"),
+                          json=body, timeout=20)
         if not r.ok:
             print(f"Telegram sendMessage faalde: {r.status_code} {r.text[:300]}")
         return r.ok

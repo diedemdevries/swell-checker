@@ -1,6 +1,10 @@
 """Onthouden wat we al gemeld hebben.
 
-Zonder dit krijg je elke zes uur hetzelfde bericht over dezelfde swell.
+Een swell wordt onthouden per regio en per periode, niet per spot. Anders
+krijg je bij een swell in de Landes vijf berichten achter elkaar: eerst
+La Graviere, dan La Piste, dan Les Bourdaines... Ook een forecast die een
+dag opschuift telt als dezelfde swell.
+
 Het bestand wordt door de GitHub Action teruggecommit naar de repo, dus
 het overleeft tussen runs.
 """
@@ -8,15 +12,35 @@ het overleeft tussen runs.
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 KEEP_DAYS = 45
-SCORE_BUMP = 12.0   # zoveel moet een swell verbeteren voor een herhaalbericht
+SCORE_BUMP = 12.0     # zoveel moet een swell verbeteren voor een herhaalbericht
+SAME_SWELL_DAYS = 4   # periodes die zo dicht bij elkaar liggen zijn dezelfde swell
+
+
+def _parse(key: str, spot_region: Dict[str, str]):
+    """Sleutel -> (regio, start, eind). Snapt ook het oude formaat spot|datum."""
+    parts = key.split("|")
+    try:
+        if len(parts) == 3:
+            return parts[0], date.fromisoformat(parts[1]), date.fromisoformat(parts[2])
+        if len(parts) == 2:
+            d = date.fromisoformat(parts[1])
+            return spot_region.get(parts[0], parts[0]), d, d
+    except ValueError:
+        pass
+    return None
+
+
+def make_key(region: str, start: date, end: date) -> str:
+    return f"{region}|{start.isoformat()}|{end.isoformat()}"
 
 
 class State:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, spot_region: Optional[Dict[str, str]] = None):
         self.path = Path(path)
+        self.spot_region = spot_region or {}
         self.data = {"announced": {}}
         if self.path.exists():
             try:
@@ -25,25 +49,40 @@ class State:
             except (json.JSONDecodeError, OSError):
                 pass  # corrupt bestand: begin schoon, liever dubbel dan stil
 
+    def _same_swell(self, region: str, start: date, end: date) -> List[dict]:
+        hits = []
+        gap = timedelta(days=SAME_SWELL_DAYS)
+        for key, val in self.data["announced"].items():
+            p = _parse(key, self.spot_region)
+            if not p:
+                continue
+            r, s, e = p
+            if r == region and s - gap <= end and e + gap >= start:
+                hits.append(val)
+        return hits
+
     # ---- beslissen ------------------------------------------------
-    def should_announce(self, key: str, tier: str, score: float) -> Optional[str]:
+    def should_announce(self, region: str, start: date, end: date,
+                        tier: str, score: float) -> Optional[str]:
         """Geeft de reden terug waarom we melden, of None om te zwijgen.
 
-        - nieuw blok                     -> "new"
-        - eerder als vroege waarschuwing, nu bevestigd -> "confirm"
-        - zelfde niveau maar flink beter -> "upgrade"
+        - nieuwe swell in deze regio               -> "new"
+        - eerder alleen vroeg gemeld, nu bevestigd -> "confirm"
+        - zelfde swell maar flink beter geworden   -> "upgrade"
         """
-        prev = self.data["announced"].get(key)
-        if prev is None:
+        prev = self._same_swell(region, start, end)
+        if not prev:
             return "new"
-        if prev.get("tier") == "early" and tier == "confirm":
+        if tier == "confirm" and all(p.get("tier") == "early" for p in prev):
             return "confirm"
-        if score - float(prev.get("score", 0)) >= SCORE_BUMP:
+        best = max(float(p.get("score", 0)) for p in prev)
+        if score - best >= SCORE_BUMP:
             return "upgrade"
         return None
 
-    def record(self, key: str, tier: str, score: float) -> None:
-        self.data["announced"][key] = {
+    def record(self, region: str, start: date, end: date, tier: str,
+               score: float) -> None:
+        self.data["announced"][make_key(region, start, end)] = {
             "tier": tier,
             "score": round(score, 1),
             "at": datetime.utcnow().isoformat(timespec="seconds"),
@@ -56,10 +95,10 @@ class State:
         keep = {}
         for key, val in self.data["announced"].items():
             try:
-                start = date.fromisoformat(key.split("|")[-1])
+                last = date.fromisoformat(key.split("|")[-1])
             except ValueError:
                 continue
-            if start >= cutoff:
+            if last >= cutoff:
                 keep[key] = val
         self.data["announced"] = keep
 

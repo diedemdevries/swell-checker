@@ -8,10 +8,9 @@
 """
 
 import argparse
-import os
 import sys
 import traceback
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -96,72 +95,30 @@ def scan(cfg: dict, today: date, verbose: bool = False, fetch=None):
     return all_blocks
 
 
-def build_trip(block, cfg: dict, today: date, stays: dict):
-    """Vertaal een swell-blok naar vlucht, auto, materiaal en bed.
+def build_trip(block, cfg: dict, stays: dict):
+    """Vertaal een swell-blok naar vluchtopties, auto, materiaal en bed.
 
-    De vlucht wordt gezocht over de hele vliegveldpool van de regio en over
-    een paar heen/terug-combinaties. Winnaar is niet de goedkoopste, maar
-    de laagste prijs per behouden surfsessie.
+    Er wordt niets live opgezocht. Vluchten komen uit de vaste routes per
+    regio in config.yaml, auto en bed zijn richtprijzen met een zoeklink.
     """
     spot = block.spot
     t = cfg["trip"]
     region = cfg["regions"][spot["region"]]
-    airports = {a["code"]: a["name"] for a in region["airports"]}
+    out_d, back_d = flights.trip_dates(block.start, block.end)
+    origin_names = {o["code"]: o["name"] for o in cfg["origins"]}
 
-    # Alleen vliegvelden die bij deze spot horen en binnen de rijtijd vallen.
-    drive = {code: mins for code, mins in (spot.get("drive_min") or {}).items()
-             if code in airports and mins <= t["max_drive_min"]}
-    if not drive:
-        drive = {a["code"]: 0 for a in region["airports"][:1]}
-
-    days = [d.day for d in block.days]
-    pairs = flights.date_pairs(block.start, block.end, today,
-                               t["flex_days_before"], t["flex_days_after"],
-                               t["max_trip_nights"])
-
-    token = os.environ.get("APIFY_TOKEN", "")
-    found, err = [], None
-    for out_d, back_d in pairs:
-        try:
-            rows = flights.search(cfg, cfg["origins"], sorted(drive),
-                                  out_d, back_d, t["people"], token)
-        except flights.FlightError as exc:
-            err = str(exc)
-            break
-        found.extend(flights.to_flights(
-            rows, airports, drive, out_d, back_d, days,
-            cfg["links"]["flight"], t["people"], t.get("direct_only", True)))
-
-    f = (flights.best(found, region["car_eur_day"], region["rental_eur_day"],
-                      t["max_stay_eur_night"], t["people"]) if found else None)
-    if f is None and err is None and pairs:
-        err = "geen directe vlucht gevonden in dit venster"
-
-    # Zonder vlucht rekenen we toch een begroting door op de logische datums.
-    if f is not None:
-        out_d = date.fromisoformat(f.out_date)
-        back_d = date.fromisoformat(f.back_date)
-        airport = f.dest
-    else:
-        out_d, back_d = pairs[0] if pairs else (block.start, block.end)
-        airport = min(drive, key=drive.get)
-        f = flights.Flight(
-            origin=cfg["origins"][0]["code"], dest=airport,
-            dest_name=airports.get(airport, airport),
-            out_date=out_d.isoformat(), back_date=back_d.isoformat(),
-            price_eur=None, carrier="?", stops=0, drive_min=drive.get(airport, 0),
-            link=flights.search_link(cfg["links"]["flight"],
-                                     cfg["origins"][0]["code"], airport,
-                                     out_d, back_d, t["people"]),
-            total_sessions=len(days),
-        )
+    options = flights.options_for(spot, region, origin_names, out_d, back_d,
+                                  t["people"], cfg["links"]["flight"],
+                                  t["max_drive_min"])
+    airport = options[0].dest if options else min(
+        spot.get("drive_min") or {"?": 0}, key=(spot.get("drive_min") or {"?": 0}).get)
 
     c = booking.car_for(airport, region["car_eur_day"], out_d, back_d,
                         cfg["links"]["car"])
     g = booking.gear_for(region["rental_eur_day"], out_d, back_d)
     st = booking.stay_for(spot, out_d, back_d, t["max_stay_eur_night"],
                           t["people"], cfg["links"]["stay"], stays)
-    return f, c, g, st, err
+    return options, c, g, st, out_d, back_d
 
 
 def main() -> int:
@@ -178,7 +135,11 @@ def main() -> int:
     stays = booking.load_stays(ROOT / "stays.yaml")
     today = date.today()
     tg = notify.Telegram(dry_run=args.dry_run)
-    state = State(Path(args.state))
+    spot_region = {sp["name"]: sp["region"] for sp in cfg["spots"]}
+    state = State(Path(args.state), spot_region)
+    alerts = cfg.get("alerts", {})
+    min_score = float(alerts.get("min_score", 0))
+    poll_score = float(alerts.get("poll_min_score", 101))
 
     print(f"Surf check · {datetime.now():%Y-%m-%d %H:%M} · {len(cfg['spots'])} spots")
 
@@ -192,16 +153,22 @@ def main() -> int:
         print("Geen blok haalt de eisen. Stil blijven.")
         return 0
 
-    # Alleen blokken binnen een alarmvenster, beste eerst.
+    # Alleen blokken binnen een alarmvenster en boven de drempel, beste eerst.
     candidates = []
     for b in blocks:
         t = "confirm" if args.demo else tier_for(b.start, today, cfg)
-        if t:
-            candidates.append((b, t))
+        if not t:
+            continue
+        if not args.demo and b.score < min_score:
+            if args.verbose:
+                print(f"  {b.spot['name']:<28} score {b.score:.0f} onder meldgrens {min_score:.0f}")
+            continue
+        candidates.append((b, t))
     candidates.sort(key=lambda bt: bt[0].rank_score, reverse=True)
 
     if not candidates:
-        print(f"{len(blocks)} blok(ken) gevonden, maar geen binnen een alarmvenster.")
+        print(f"{len(blocks)} blok(ken) gevonden, maar niets boven de meldgrens"
+              f" binnen een alarmvenster.")
         return 0
 
     print(f"{len(candidates)} kandidaat(en). Beste: "
@@ -209,37 +176,39 @@ def main() -> int:
 
     sent = 0
     for block, tier in candidates:
-        reason = "new" if args.demo else state.should_announce(block.key(), tier, block.score)
+        region_key = block.spot["region"]
+        reason = "new" if args.demo else state.should_announce(
+            region_key, block.start, block.end, tier, block.score)
         if not reason:
-            print(f"  {block.spot['name']} — al gemeld, overslaan")
+            print(f"  {block.spot['name']} — deze swell is al gemeld, overslaan")
             continue
 
         try:
-            f, c, g, st, ferr = build_trip(block, cfg, today, stays)
+            options, c, g, st, out_d, back_d = build_trip(block, cfg, stays)
         except Exception as exc:  # noqa: BLE001
             print(f"  {block.spot['name']} — trip bouwen mislukt: {exc}")
             traceback.print_exc()
             continue
 
-        if ferr:
-            print(f"  {block.spot['name']} - vluchten: {ferr}")
-        elif f.price_eur is not None:
-            print(f"  {block.spot['name']} - vlucht {f.origin}->{f.dest}"
-                  f" EUR {f.price_eur:.0f} ({f.carrier}),"
-                  f" {f.sessions_kept}/{f.total_sessions} sessies")
+        # Andere spots in dezelfde regio die dezelfde swell pakken.
+        also = []
+        for b, _ in candidates:
+            if (b is not block and b.spot["region"] == region_key
+                    and b.start <= block.end and b.end >= block.start
+                    and b.spot["name"] not in also):
+                also.append(b.spot["name"])
 
-        runner = next((b for b, _ in candidates
-                       if b.spot["name"] != block.spot["name"]), None)
         msg = notify.build_message(
-            block, f, c, g, st, reason, tier, cfg["trip"]["people"],
-            cfg["regions"][block.spot["region"]]["name"], runner,
-            cfg["trip"]["flight_reference_eur"], ferr)
-        if tg.send(msg):
-            tg.poll(f"{block.spot['name']} — {block.n_days} dagen. Gaan we?",
-                    ["Ik ben in 🤙", "Kan niet 😔"])
-            state.record(block.key(), tier, block.score)
+            block, options, c, g, st, out_d, back_d, reason, tier,
+            cfg["trip"]["people"], cfg["regions"][region_key]["name"],
+            also[:3], poll_score)
+        if tg.send(msg, notify.buttons(options, c, st)):
+            if block.score >= poll_score:
+                tg.poll(f"{block.spot['name']} — {block.n_days} dagen. Gaan we?",
+                        ["Ik ben in 🤙", "Kan niet 😔"])
+            state.record(region_key, block.start, block.end, tier, block.score)
             sent += 1
-        break   # één voorstel per run, geen spam
+        break   # één voorstel per run
 
     if sent == 0:
         print("Niets nieuws te melden.")

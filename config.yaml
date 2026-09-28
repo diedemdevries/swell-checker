@@ -18,6 +18,13 @@
 #                 ~1.0 flauw strand · ~1.5 point · ~1.7 zware reef
 #    season       maanden waarin we uberhaupt scannen (scheelt ruis)
 #    tier         near = 2 goede dagen genoeg, far = 3
+#
+#  VLUCHTEN
+#    Per regio staan de vaste directe routes vanuit de Benelux met een
+#    richtprijs: per persoon, retour, alleen rugzak, 3-9 dagen vooruit
+#    geboekt (gemeten okt 2026 via Kiwi). Er wordt niets live opgezocht;
+#    de knop in het bericht opent Skyscanner met de datums ingevuld.
+#    Klopt een prijs structureel niet meer? Pas 'eur' hier aan.
 # ============================================================
 
 criteria:
@@ -38,26 +45,22 @@ criteria:
     direction: 0.1
   min_day_score: 55
 
+# Wanneer er een bericht komt. Eén swell per regio wordt maar één keer
+# gemeld, ook als hij op vijf spots tegelijk goed is.
+alerts:
+  min_score: 75          # blokken daaronder blijven stil
+  poll_min_score: 85     # alleen bij echt goede swells een "Gaan we?"-poll
+
 trip:
   people: 2
   max_stay_eur_night: 50
-  flight_reference_eur: 200
-  flex_days_before: 2
-  flex_days_after: 2
-  max_trip_nights: 6
   early_warning_days:
   - 6
   - 9
   confirm_days:
   - 0
   - 5
-  direct_only: true
   max_drive_min: 240
-
-apify:
-  actor: johnvc~google-flights-data-scraper-flight-and-price-search
-  max_charge_usd: 0.15
-  timeout_s: 180
 
 origins:
 - code: EIN
@@ -69,9 +72,9 @@ origins:
 - code: NRN
   name: Weeze
 - code: CRL
-  name: Brussel Charleroi
+  name: Charleroi
 - code: BRU
-  name: Brussel Zaventem
+  name: Brussel
 
 tiers:
   near:
@@ -90,6 +93,10 @@ regions:
     car_eur_day: 15
     rental_eur_day: 20
     tier: far
+    flights:
+    - {from: CRL, to: RAK, airline: Ryanair, eur: 125}
+    - {from: CRL, to: AGA, airline: Ryanair, eur: 180}
+    - {from: NRN, to: AGA, airline: Ryanair, eur: 180}
   portugal-midden:
     name: Portugal (midden)
     airports:
@@ -100,6 +107,10 @@ regions:
     car_eur_day: 25
     rental_eur_day: 25
     tier: near
+    flights:
+    - {from: CRL, to: LIS, airline: Ryanair, eur: 225}
+    - {from: BRU, to: LIS, airline: TAP, eur: 250}
+    - {from: CRL, to: OPO, airline: Ryanair, eur: 180}
   algarve:
     name: Algarve
     airports:
@@ -110,6 +121,9 @@ regions:
     car_eur_day: 22
     rental_eur_day: 25
     tier: far
+    flights:
+    - {from: CRL, to: FAO, airline: Ryanair, eur: 115}
+    - {from: CRL, to: LIS, airline: Ryanair, eur: 225}
   baskenland:
     name: Baskenland & zuidwest-Frankrijk
     airports:
@@ -124,6 +138,10 @@ regions:
     car_eur_day: 42
     rental_eur_day: 35
     tier: near
+    flights:
+    - {from: CRL, to: BIQ, airline: Ryanair, eur: 185}
+    - {from: BRU, to: BOD, airline: easyJet, eur: 220}
+    - {from: EIN, to: BIO, airline: Transavia, eur: 300}
   noord-spanje:
     name: Noord-Spanje
     airports:
@@ -136,6 +154,10 @@ regions:
     car_eur_day: 38
     rental_eur_day: 30
     tier: near
+    flights:
+    - {from: CRL, to: SDR, airline: Ryanair, eur: 50}
+    - {from: BRU, to: OVD, airline: Volotea, eur: 300}
+    - {from: EIN, to: BIO, airline: Transavia, eur: 300}
   engeland:
     name: Engeland
     airports:
@@ -146,6 +168,8 @@ regions:
     car_eur_day: 40
     rental_eur_day: 35
     tier: far
+    flights:
+    - {from: AMS, to: BRS, airline: easyJet, eur: 155}
   ierland:
     name: Ierland
     airports:
@@ -158,6 +182,10 @@ regions:
     car_eur_day: 33
     rental_eur_day: 35
     tier: far
+    flights:
+    - {from: CRL, to: DUB, airline: Ryanair, eur: 80}
+    - {from: BRU, to: DUB, airline: Ryanair, eur: 80}
+    - {from: AMS, to: DUB, airline: Ryanair, eur: 85}
 
 spots:
 - name: Anchor Point

@@ -134,24 +134,49 @@ check("swell over 7 dagen = vroege waarschuwing", tier_for(TODAY + timedelta(day
 check("swell over 20 dagen = nog niks melden", tier_for(TODAY + timedelta(days=20), TODAY, CFG) is None)
 
 # ---------------------------------------------------------------
-# 10. Dedupe: niet blijven herhalen, wel bevestigen.
+# 10. Dedupe: één swell per regio één bericht, ook als hij schuift.
 # ---------------------------------------------------------------
 import tempfile  # noqa: E402
 tmp = Path(tempfile.mkdtemp()) / "state.json"
-st = State(tmp)
-key = "Testspot|2026-09-20"
-check("eerste keer melden we", st.should_announce(key, "early", 70) == "new")
-st.record(key, "early", 70)
-check("tweede keer zelfde niveau: stil", st.should_announce(key, "early", 72) is None)
-check("early -> confirm: wel melden", st.should_announce(key, "confirm", 70) == "confirm")
-check("flink beter geworden: opnieuw melden", st.should_announce(key, "early", 90) == "upgrade")
+REG = {"La Graviere (Hossegor)": "baskenland", "La Piste (Capbreton)": "baskenland",
+       "Coxos (Ericeira)": "portugal-midden"}
+st = State(tmp, REG)
+S0, E0 = date(2026, 9, 20), date(2026, 9, 23)
+check("eerste keer melden we", st.should_announce("baskenland", S0, E0, "early", 76) == "new")
+st.record("baskenland", S0, E0, "early", 76)
+check("tweede keer zelfde niveau: stil",
+      st.should_announce("baskenland", S0, E0, "early", 78) is None)
+check("forecast schuift een dag op: nog steeds dezelfde swell",
+      st.should_announce("baskenland", S0 + timedelta(days=1), E0 + timedelta(days=1),
+                         "early", 78) is None)
+check("early -> confirm: wel melden",
+      st.should_announce("baskenland", S0, E0, "confirm", 76) == "confirm")
+st.record("baskenland", S0, E0, "confirm", 76)
+check("na de bevestiging niet nog eens bevestigen",
+      st.should_announce("baskenland", S0, E0, "confirm", 80) is None)
+check("flink beter geworden: opnieuw melden",
+      st.should_announce("baskenland", S0, E0, "confirm", 90) == "upgrade")
+check("andere regio, zelfde dagen: wel melden",
+      st.should_announce("portugal-midden", S0, E0, "confirm", 76) == "new")
+check("zelfde regio, week later: nieuwe swell",
+      st.should_announce("baskenland", E0 + timedelta(days=6), E0 + timedelta(days=8),
+                         "confirm", 76) == "new")
 st.save()
 check("state overleeft opnieuw inlezen",
-      State(tmp).should_announce(key, "early", 71) is None)
-st2 = State(tmp)
-st2.record("Oudspot|2024-01-01", "early", 60)
+      State(tmp, REG).should_announce("baskenland", S0, E0, "confirm", 77) is None)
+
+# Oude sleutels (spot|datum) van voor deze versie worden nog begrepen.
+oud = State(Path(tempfile.mkdtemp()) / "s.json", REG)
+oud.data["announced"]["La Piste (Capbreton)|2026-10-01"] = {"tier": "confirm", "score": 73}
+check("oude melding per spot telt mee voor de hele regio",
+      oud.should_announce("baskenland", date(2026, 10, 2), date(2026, 10, 4),
+                          "confirm", 75) is None)
+
+st2 = State(tmp, REG)
+st2.record("baskenland", date(2024, 1, 1), date(2024, 1, 3), "early", 60)
 st2.prune(TODAY)
-check("oude swells worden opgeruimd", "Oudspot|2024-01-01" not in st2.data["announced"])
+check("oude swells worden opgeruimd",
+      not any(k.startswith("baskenland|2024") for k in st2.data["announced"]))
 
 # ---------------------------------------------------------------
 # 11. Hoogteschatting: klopt de orde van grootte?
@@ -162,13 +187,47 @@ check("2m @ 14s op een point = ruim dubbel manshoog", 9 <= anchor <= 13, f"{anch
 check("1.2m @ 9s op een strand = te klein voor deze trip", beach < 5, f"{beach:.1f}ft")
 
 # ---------------------------------------------------------------
-# 12. Einde-tot-eind: scan met verzonnen data levert een bericht op.
+# 12. Vluchten: vaste routes per regio, beste eerst.
 # ---------------------------------------------------------------
-from main import scan  # noqa: E402
 import booking, flights, notify  # noqa: E402
 
+ORIG = {o["code"]: o["name"] for o in CFG["origins"]}
+spots_by_name = {sp["name"]: sp for sp in CFG["spots"]}
+
+
+def opts(name, out_d=date(2026, 10, 13), back_d=date(2026, 10, 17)):
+    sp = spots_by_name[name]
+    return flights.options_for(sp, CFG["regions"][sp["region"]], ORIG, out_d, back_d,
+                               2, CFG["links"]["flight"], CFG["trip"]["max_drive_min"])
+
+
+check("elke regio heeft vaste vluchten",
+      all(r.get("flights") for r in CFG["regions"].values()))
+check("elke spot heeft minstens één bruikbare route",
+      all(opts(n) for n in spots_by_name), [n for n in spots_by_name if not opts(n)])
+rod = opts("Rodiles (Asturias)")
+check("Rodiles: Santander wint van dure Oviedo-vlucht", rod[0].dest == "SDR", rod[0].dest)
+ll = opts("Lahinch")
+check("Lahinch: via Dublin", ll[0].dest == "DUB")
+check("route verder dan de max rijtijd valt af",
+      all(o.drive_min <= CFG["trip"]["max_drive_min"] for n in spots_by_name for o in opts(n)))
+link = opts("La Graviere (Hossegor)")[0].link
+check("zoeklink heeft vliegvelden en datums", "/crl/biq/261013/261017/" in link, link)
+check("heen dag ervoor, terug op de laatste dag",
+      flights.trip_dates(date(2026, 10, 14), date(2026, 10, 17))
+      == (date(2026, 10, 13), date(2026, 10, 17)))
+alt = notify.pick_alternative(opts("Anchor Point"))
+check("alternatief gaat bij voorkeur naar een ander vliegveld",
+      alt is not None and alt.dest != opts("Anchor Point")[0].dest)
+
+# ---------------------------------------------------------------
+# 13. Einde-tot-eind: scan met verzonnen data levert een bericht op.
+# ---------------------------------------------------------------
+from main import build_trip, scan  # noqa: E402
+
 fake_cfg = dict(CFG)
-fake_cfg["spots"] = [spot(name="Hossegor Test", region="baskenland", tier="near")]
+fake_cfg["spots"] = [spot(name="Hossegor Test", region="baskenland", tier="near",
+                          drive_min={"BIQ": 40, "BOD": 105, "BIO": 145})]
 
 
 def fake_fetch(sp, days=7):
@@ -181,201 +240,40 @@ check("scan vindt het blok", len(blocks) == 1, f"{len(blocks)}")
 
 if blocks:
     b = blocks[0]
-    out_d, back_d = b.start - timedelta(days=1), b.end + timedelta(days=1)
-    c = booking.car_for("BIQ", 42, out_d, back_d, CFG["links"]["car"])
-    g = booking.gear_for(35, out_d, back_d)
-    st = booking.stay_for(b.spot, out_d, back_d, 50, 2, CFG["links"]["stay"], {})
-
-    f = flights.Flight("EIN", "BIQ", "Biarritz", out_d.isoformat(),
-                       back_d.isoformat(), 118.0, "Transavia", 0, 40, "https://x",
-                       sessions_kept=b.n_days, total_sessions=b.n_days)
-    msg = notify.build_message(b, f, c, g, st, "new", "confirm", 2,
-                               "Baskenland", None, 200)
-    check("bericht bevat de spot, de dagen en een totaalbedrag",
-          "Hossegor Test" in msg and "Totaal" in msg and "ft" in msg)
-    check("bericht meldt dat alle surfdagen overeind blijven", "Alle" in msg)
+    options, c, g, st, out_d, back_d = build_trip(b, fake_cfg, {})
+    check("trip heeft een vlucht naar Biarritz", options and options[0].dest == "BIQ")
+    msg = notify.build_message(b, options, c, g, st, out_d, back_d, "new", "confirm",
+                               2, "Baskenland", ["La Piste"])
+    plain = msg.replace("<b>", "").replace("</b>", "")
+    check("bovenaan: spot, dagen en totaalprijs",
+          "HOSSEGOR TEST" in msg.split("\n")[0] and "p.p." in "\n".join(msg.split("\n")[:4]))
+    check("vlucht met maatschappij en richtprijs", "Ryanair" in msg and "~€185" in msg)
+    check("buurspots worden genoemd in plaats van apart gemeld", "La Piste" in msg)
+    check("geen score-jargon meer", "/100" not in msg)
+    check("geen links in de tekst", "<a " not in msg)
     check("bericht is niet absurd lang voor Telegram", len(msg) < 4096, f"{len(msg)} tekens")
-    check("HTML is gebalanceerd", msg.count("<b>") == msg.count("</b>"))
-    check("board en pak staan in de begroting", "Board + pak" in msg)
-
-    f2 = flights.Flight("EIN", "BIQ", "Biarritz", out_d.isoformat(),
-                        back_d.isoformat(), 118.0, "Transavia", 0, 40, "https://x",
-                        sessions_kept=b.n_days - 1, total_sessions=b.n_days)
-    check("bericht waarschuwt als de vlucht surfdagen kost",
-          "mist" in notify.build_message(b, f2, c, g, st, "new", "confirm", 2,
-                                         "Baskenland", None, 200))
-
-    kapot = notify.build_message(b, f, c, g, st, "new", "confirm", 2, "Baskenland",
-                                 None, 200, "Apify-token afgekeurd")
-    check("storing wordt gemeld ook als er tóch een prijs was",
-          "Apify-token afgekeurd" in kapot, "")
-
-    geenprijs = flights.Flight("EIN", "BIQ", "Biarritz", out_d.isoformat(),
-                               back_d.isoformat(), None, "?", 0, 40, "https://x",
-                               total_sessions=b.n_days)
-    zonder = notify.build_message(b, geenprijs, c, g, st, "new", "confirm", 2,
-                                  "Baskenland", None, 200, "geen directe vlucht gevonden")
-    check("zonder prijs komt er toch een bericht met reden",
-          "Geen vluchtprijs" in zonder and "geen directe vlucht" in zonder)
-    check("dure vlucht wordt gemarkeerd maar niet geblokkeerd",
-          "prijzig" in notify.build_message(
-              b, flights.Flight("EIN", "BIQ", "Biarritz", out_d.isoformat(),
-                                back_d.isoformat(), 450.0, "KLM", 0, 40, "https://x",
-                                sessions_kept=b.n_days, total_sessions=b.n_days),
-              c, g, st, "new", "confirm", 2, "Baskenland", None, 200))
+    check("HTML is gebalanceerd",
+          msg.count("<b>") == msg.count("</b>") and msg.count("<i>") == msg.count("</i>")
+          and msg.count("<pre>") == msg.count("</pre>"))
+    kb = notify.buttons(options, c, st)
+    flat = [x for row in kb for x in row]
+    check("knoppen voor vlucht, auto en bed",
+          any("✈️" in x["text"] for x in flat) and any("Auto" in x["text"] for x in flat)
+          and any("Bed" in x["text"] for x in flat))
+    check("alle knoppen hebben een https-link", all(x["url"].startswith("https://") for x in flat))
+    vroeg = notify.build_message(b, options, c, g, st, out_d, back_d, "new", "early",
+                                 2, "Baskenland")
+    check("vroeg signaal zegt: nog niet boeken", "Nog niet boeken" in vroeg)
     DEMO_MSG = msg
 else:
     DEMO_MSG = ""
 
 # ---------------------------------------------------------------
-# 13. Datumcombinaties: zinnige heen/terug-paren, niet alles.
+# 14. Meldgrens en poll.
 # ---------------------------------------------------------------
-B_START, B_END = date(2026, 10, 15), date(2026, 10, 18)
-pairs = flights.date_pairs(B_START, B_END, date(2026, 10, 1), 2, 2, 6)
-check("heenvluchten liggen op of voor de eerste goede dag",
-      all(o <= B_START for o, _ in pairs), f"{pairs[:3]}")
-check("terugvluchten liggen op of na de laatste goede dag",
-      all(b >= B_END for _, b in pairs), f"{pairs[:3]}")
-check("geen trip langer dan het maximum",
-      all((b - o).days <= 6 for o, b in pairs))
-laat = flights.date_pairs(B_START, B_END, B_START, 2, 2, 6)
-check("geen vertrekdatum in het verleden",
-      all(o >= B_START for o, _ in laat), f"{laat[:3]}")
-
-# ---------------------------------------------------------------
-# 14. Sessies tellen: wat houdt een vlucht van de swell over?
-# ---------------------------------------------------------------
-DAYS = [date(2026, 10, 15), date(2026, 10, 16), date(2026, 10, 17)]
-check("aankomst de avond ervoor laat alles staan",
-      flights.sessions_kept(DAYS, "2026-10-14T21:00:00", "2026-10-18T10:00:00") == 3)
-check("aankomst 's middags op dag 1 kost die dag",
-      flights.sessions_kept(DAYS, "2026-10-15T14:00:00", "2026-10-18T10:00:00") == 2)
-check("aankomst 's ochtends vroeg op dag 1 telt wel mee",
-      flights.sessions_kept(DAYS, "2026-10-15T07:00:00", "2026-10-18T10:00:00") == 3)
-check("vroege terugvlucht op de laatste dag kost die ochtend",
-      flights.sessions_kept(DAYS, "2026-10-14T20:00:00", "2026-10-17T08:00:00") == 2)
-check("late terugvlucht op de laatste dag laat hem staan",
-      flights.sessions_kept(DAYS, "2026-10-14T20:00:00", "2026-10-17T19:00:00") == 3)
-check("zonder tijden valt hij terug op datums",
-      flights.sessions_kept(DAYS, None, None) == 3)
-
-# ---------------------------------------------------------------
-# 15. Beste vlucht = laagste prijs per behouden sessie.
-# ---------------------------------------------------------------
-def mkf(price, kept, drive=30, dest="BIO", origin="AMS"):
-    return flights.Flight(origin=origin, dest=dest, dest_name=dest,
-                          out_date="2026-10-14", back_date="2026-10-18",
-                          price_eur=price, carrier="X", stops=0, drive_min=drive,
-                          link="https://x", sessions_kept=kept, total_sessions=3)
-
-goedkoop_kort = mkf(150, 1)      # 150 per sessie
-duur_lang = mkf(300, 3)          # 100 per sessie
-check("duurdere vlucht wint als hij meer surfdagen oplevert",
-      flights.best([goedkoop_kort, duur_lang], 40, 30, 50, 2) is duur_lang)
-check("bij gelijke sessies wint de goedkoopste",
-      flights.best([mkf(200, 3), mkf(140, 3)], 40, 30, 50, 2).price_eur == 140)
-check("bij gelijke prijs en sessies wint de korte rit",
-      flights.best([mkf(200, 3, drive=200), mkf(200, 3, drive=20)], 40, 30, 50, 2).drive_min == 20)
-check("vluchten zonder bruikbare sessie vallen af",
-      flights.best([mkf(50, 0)], 40, 30, 50, 2) is None)
-check("lege lijst geeft niets terug", flights.best([], 40, 30, 50, 2) is None)
-
-def mkf2(price, kept, out, back):
-    return flights.Flight(origin="AMS", dest="AGA", dest_name="Agadir",
-                          out_date=out, back_date=back, price_eur=price,
-                          carrier="X", stops=0, drive_min=45, link="https://x",
-                          sessions_kept=kept, total_sessions=4)
-
-kort = mkf2(274, 4, "2026-08-22", "2026-08-27")   # 5 nachten
-lang = mkf2(274, 4, "2026-08-21", "2026-08-27")   # 6 nachten, zelfde vlucht
-check("onnodig lange trip verliest van de korte bij gelijke sessies",
-      flights.best([lang, kort], 15, 20, 50, 2) is kort)
-
-# ---------------------------------------------------------------
-# 16. Apify-antwoorden uitpakken en filteren.
-# ---------------------------------------------------------------
-PAYLOAD = [{"all_flights": [
-    {"price": 274, "airlines": "Transavia", "stops": 0,
-     "departure_id": "AMS", "arrival_id": "AGA"},
-    {"price": 99, "airlines": "Ryanair", "stops": 1,
-     "departure_id": "EIN", "arrival_id": "AGA"},
-    {"price": 180, "airlines": "KLM", "stops": 0,
-     "departure_id": "AMS", "arrival_id": "XXX"},
-    {"airlines": "Kapot", "stops": 0},
-]}]
-rows = flights._rows(PAYLOAD)
-check("alle vluchtrijen worden gevonden", len(rows) == 4, f"{len(rows)}")
-fl = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
-                        date(2026, 10, 14), date(2026, 10, 18), DAYS,
-                        "https://x/{origin}/{dest}", 2, True)
-check("tussenstop valt af bij direct-only", all(f.stops == 0 for f in fl))
-check("onbekende bestemming valt af", all(f.dest == "AGA" for f in fl))
-check("rij zonder prijs valt af", len(fl) == 1, f"{[(f.dest, f.price_eur) for f in fl]}")
-check("prijs wordt per persoon gerekend", fl[0].price_eur == 137.0,
-      f"{fl[0].price_eur}")
-fl_solo = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
-                             date(2026, 10, 14), date(2026, 10, 18), DAYS,
-                             "https://x/{origin}/{dest}", 1, True)
-check("bij een persoon blijft de prijs zoals hij is",
-      fl_solo[0].price_eur == 274.0, f"{fl_solo[0].price_eur}")
-
-fl_stops = flights.to_flights(rows, {"AGA": "Agadir"}, {"AGA": 45},
-                              date(2026, 10, 14), date(2026, 10, 18), DAYS,
-                              "https://x/{origin}/{dest}", 2, False)
-check("met overstap toegestaan komt de tussenstop er wel door", len(fl_stops) == 2)
-
-# ---------------------------------------------------------------
-# 16b. Het echte Google Flights-formaat uitpakken.
-# ---------------------------------------------------------------
-GF = [{
-  "search_parameters": {"departure_id": "EIN,AMS", "arrival_id": "AGA,RAK"},
-  "best_flights": [
-    {"price": 274, "flights": [
-        {"departure_airport": {"id": "AMS", "time": "2026-08-21 14:20"},
-         "arrival_airport": {"id": "AGA", "time": "2026-08-21 17:20"},
-         "airline": "Transavia"}]},
-    {"price": 180, "flights": [
-        {"departure_airport": {"id": "EIN", "time": "2026-08-21 09:00"},
-         "arrival_airport": {"id": "FEZ", "time": "2026-08-21 11:15"},
-         "airline": "Ryanair"},
-        {"departure_airport": {"id": "FEZ", "time": "2026-08-21 21:05"},
-         "arrival_airport": {"id": "AGA", "time": "2026-08-21 22:25"},
-         "airline": "Ryanair"}]},
-  ],
-  "other_flights": [
-    {"price": 330, "flights": [
-        {"departure_airport": {"id": "AMS", "time": "2026-08-21 07:10"},
-         "arrival_airport": {"id": "AGA", "time": "2026-08-21 10:15"},
-         "airline": "KLM"}]},
-  ],
-}]
-gf_rows = flights._rows(GF)
-check("beste en overige vluchten worden allebei gepakt", len(gf_rows) == 3, f"{len(gf_rows)}")
-gf = flights.to_flights(gf_rows, {"AGA": "Agadir"}, {"AGA": 45},
-                        date(2026, 8, 21), date(2026, 8, 26),
-                        [date(2026, 8, 23), date(2026, 8, 24)],
-                        "https://x/{origin}/{dest}", 2, True)
-check("tussenlanding via Fez valt af bij direct-only", len(gf) == 2, f"{[f.carrier for f in gf]}")
-check("maatschappij komt uit het deeltraject",
-      sorted(f.carrier for f in gf) == ["KLM", "Transavia"], f"{[f.carrier for f in gf]}")
-check("vertrekvliegveld komt uit het eerste deeltraject",
-      sorted(f.origin for f in gf) == ["AMS", "AMS"], f"{[f.origin for f in gf]}")
-check("aankomsttijd komt uit het laatste deeltraject",
-      any(f.out_arrive and "17:20" in f.out_arrive for f in gf))
-check("zonder terugvlucht rekent hij met een avondvertrek",
-      all(f.back_depart and f.back_depart.startswith("2026-08-26") for f in gf))
-check("spatie-tijden worden begrepen",
-      flights.sessions_kept([date(2026, 8, 23)], "2026-08-21 17:20", "2026-08-26 20:00") == 1)
-
-# ---------------------------------------------------------------
-# 17. Bron kapot -> duidelijke fout, geen stille stilte.
-# ---------------------------------------------------------------
-try:
-    flights.search(CFG, [{"code": "AMS"}], ["AGA"], date(2026, 10, 14),
-                   date(2026, 10, 18), 2, "")
-    check("ontbrekend token geeft een fout", False)
-except flights.FlightError as exc:
-    check("ontbrekend token geeft een fout", "APIFY_TOKEN" in str(exc), str(exc))
+check("meldgrens staat op 75", CFG["alerts"]["min_score"] == 75)
+check("poll alleen bij echt goede swells", CFG["alerts"]["poll_min_score"] > CFG["alerts"]["min_score"])
+check("geen betaalde vluchtzoeker meer in de config", "apify" not in CFG)
 
 # ---------------------------------------------------------------
 # 18. Eigen slaapplekken uit stays.yaml.

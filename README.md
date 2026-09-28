@@ -24,8 +24,16 @@ knopen blijft, dan gaat dit ding vrijwel nooit af.
 regio's, drie voor Marokko, Ierland, Engeland en de Algarve.
 
 **Twee alarmniveaus.** Zit de swell 6-9 dagen weg, dan krijg je een vroege
-waarschuwing. Komt hij binnen vijf dagen, dan volgt de bevestiging. Een swell
-die al gemeld is komt niet nog eens langs.
+waarschuwing. Komt hij binnen vijf dagen, dan volgt de bevestiging.
+
+**Eén bericht per swell.** Een swell wordt onthouden per regio, niet per spot.
+Is hij goed op La Gravière, La Piste en Les Bourdaines tegelijk, dan komt er
+één bericht met de beste spot en "ook goed in de buurt: ...". Schuift de
+forecast een dag op, dan blijft het dezelfde swell. Alleen als hij flink
+beter wordt (+12 punten) komt er een update.
+
+**Meldgrens.** Blokken onder score 75 blijven stil; een "Gaan we?"-poll komt
+alleen bij 85 of hoger.
 
 ### De criteria
 
@@ -36,26 +44,23 @@ die al gemeld is komt niet nog eens langs.
 | Wind | 0-10kt uit elke richting, of tot 15kt mits offshore |
 | Venster | 06:00-11:00 lokaal, minstens 3 uur aaneen |
 | Dagen | 2 dichtbij, 3 ver weg |
-| Vluchten | alleen direct |
+| Vluchten | alleen direct, vaste routes met richtprijs |
 | Bed | maximaal EUR 50 per nacht p.p., gratis annuleren |
 
 ---
 
-## Vliegvelden: pools per regio
+## Vluchten: vaste routes, geen live zoektocht
 
-Elke spot hangt aan een **regio** met meerdere vliegvelden, en heeft per
-vliegveld een rijtijd. Hossegor is bijvoorbeeld te doen vanaf Biarritz
-(40 min), San Sebastián (75), Bordeaux (105) én Bilbao (145).
+Per regio staan in `config.yaml` de directe routes vanuit de Benelux met een
+richtprijs (per persoon, retour, alleen rugzak, 3-9 dagen vooruit geboekt).
+Het bericht noemt de beste route plus een alternatief, en de knoppen openen
+Skyscanner met de datums al ingevuld. Er wordt niets betaald opgezocht.
 
-Dat is met opzet zo: welke vliegvelden direct bereikbaar zijn verschilt per
-seizoen. Bordeaux en Biarritz worden in de zomer wél vanuit Nederland gevlogen
-en in oktober niet. Door de hele pool te doorzoeken corrigeert het systeem
-zichzelf, zonder dat iemand een lijst hoeft bij te werken.
+Beste route = richtprijs plus €20 per uur rijden, zodat een vlucht die drie
+uur verderop landt niet wint op een paar tientjes. Heen gaat de dag voor de
+eerste goede dag, terug op de avond van de laatste.
 
-**Winnaar is niet de goedkoopste vlucht** maar de laagste totale kosten per
-behouden surfsessie. Een vlucht die je een ochtend kost verliest van een
-duurdere die hem behoudt; een trip die een nacht langer duurt moet die extra
-nacht aan auto, bed en materiaal goedmaken. Rijtijd telt licht mee.
+Auto, materiaal en bed zijn ook richtprijzen per regio, met een zoeklink.
 
 ---
 
@@ -65,18 +70,14 @@ nacht aan auto, bed en materiaal goedmaken. Rijtijd telt licht mee.
 groep, stuur er een bericht dat met `/` begint, en haal het chat-id op via
 `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 
-**2. Apify-account** — gratis, op [apify.com](https://apify.com). Kopieer je
-API-token. Zet ook een maandlimiet in je account als extra zekerheid.
-
-**3. Secrets** — Settings → Secrets and variables → Actions:
+**2. Secrets** — Settings → Secrets and variables → Actions:
 
 | Naam | Waarde |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | het token van BotFather |
 | `TELEGRAM_CHAT_ID` | het negatieve groepsnummer |
-| `APIFY_TOKEN` | je Apify API-token |
 
-**4. Testen** — Actions → Surf check → Run workflow, met "Testbericht" aan.
+**3. Testen** — Actions → Surf check → Run workflow, met "Testbericht" aan.
 Er valt dan een verzonnen voorstel in de groep zodat je ziet dat alles werkt.
 
 ---
@@ -86,11 +87,11 @@ Er valt dan een verzonnen voorstel in de groep zodat je ziet dat alles werkt.
 Alles staat in `config.yaml`, met uitleg bovenaan. De knoppen die je het
 vaakst nodig hebt:
 
-- **Minder meldingen:** `min_day_score` omhoog (55 → 65), of `min_period_s`
-  naar 10.
-- **Meer meldingen:** `min_day_score` omlaag, of `max_wind_kt` omhoog.
+- **Minder meldingen:** `alerts.min_score` omhoog (75 → 80).
+- **Meer meldingen:** `alerts.min_score` omlaag.
+- **Poll vaker of minder vaak:** `alerts.poll_min_score`.
+- **Vluchtprijs klopt niet meer:** pas `eur` aan bij de route onder de regio.
 - **Verder willen rijden:** `max_drive_min` omhoog.
-- **Overstap toestaan:** `direct_only` op `false`.
 
 In `stays.yaml` vul je zelf slaapplekken aan waar je geweest bent. Staat er
 iets voor de spot waar de swell is, dan zet het voorstel dat erbij in plaats
@@ -105,17 +106,12 @@ sleutel. Marine-model voor de deining, weermodel voor de wind, samengevoegd
 op tijdstempel. Alle spots in één gebundelde aanroep. Of de wind offshore is
 rekent het script zelf uit uit de kustorientatie per spot.
 
-**Apify (Google Flights)** voor de vluchten. De bestemmingen die er voor ons
-toe doen worden door Transavia, KLM, easyJet en Ryanair door elkaar gevlogen;
-één maatschappij bevragen mist het meeste. Kosten zijn verwaarloosbaar —
-ongeveer een cent per duizend resultaten, en er wordt alleen gezocht als er
-al een swell door de filters is. In de aanroep zit een harde uitgavenlimiet.
+**Vluchten worden niet live opgezocht.** Tot september 2026 zocht de bot
+via een betaalde Google Flights-scraper, maar elke melding kostte een
+zoekopdracht. De directe routes per regio veranderen nauwelijks, dus nu
+staan ze vast in de config met een richtprijs (gemeten via Kiwi, okt 2026).
 
-Er is **geen terugval** op een tweede vluchtbron. Valt Apify om, dan zegt het
-bericht dat met de foutmelding erbij. Twee half werkende bronnen naast elkaar
-is meer onderhoud dan een duidelijke storingsmelding.
-
-**Auto en bed worden niet gescrapet** — daar bestaat geen gratis betrouwbare
+**Auto en bed worden ook niet opgezocht** — daar bestaat geen gratis betrouwbare
 bron voor. Je krijgt een richtprijs voor de begroting plus een zoeklink met
 datums, coordinaten en prijsplafond er al in.
 
@@ -125,5 +121,5 @@ datums, coordinaten en prijsplafond er al in.
 pip install -r requirements.txt
 python main.py --dry-run --verbose    # echte forecast, niets versturen
 python main.py --demo --dry-run       # verzonnen swell, bericht bekijken
-python test_logic.py                  # 65 controles op de beslislogica
+python test_logic.py                  # 60 controles op de beslislogica
 ```
