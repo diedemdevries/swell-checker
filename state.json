@@ -1,15 +1,5 @@
 {
   "announced": {
-    "La Graviere (Hossegor)|2026-10-01": {
-      "at": "2026-09-26T11:21:36",
-      "score": 72.2,
-      "tier": "confirm"
-    },
-    "La Piste (Capbreton)|2026-10-01": {
-      "at": "2026-09-27T11:59:58",
-      "score": 73.0,
-      "tier": "confirm"
-    },
     "Les Bourdaines (Seignosse)|2026-10-02": {
       "at": "2026-09-28T13:48:58",
       "score": 75.9,
@@ -18,11 +8,6 @@
     "Mundaka|2026-10-02": {
       "at": "2026-09-27T21:20:58",
       "score": 71.2,
-      "tier": "confirm"
-    },
-    "Ribeira d'Ilhas (Ericeira)|2026-10-01": {
-      "at": "2026-09-26T21:06:37",
-      "score": 69.5,
       "tier": "confirm"
     },
     "baskenland|2026-10-15|2026-10-16": {
